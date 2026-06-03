@@ -1,0 +1,39 @@
+Brake Source Available Beta License
+Version 0.1 - 2026-05-23
+
+Copyright (c) 2026 Brake Project. All rights reserved.
+
+This license is intended for the public beta of Brake. It is not an
+open-source license.
+
+Permission is granted to view, download, and use the Brake source code and
+official beta builds for personal, non-commercial evaluation and personal use.
+
+You may:
+
+1. Use official Brake beta builds for personal, non-commercial purposes.
+2. Read and inspect the source code for trust, security review, and learning.
+3. Fork the repository on GitHub for private review or to propose changes back
+   to the official project.
+
+You may not, without prior written permission from the copyright holder:
+
+1. Redistribute Brake binaries or installers.
+2. Sell, rent, sublicense, host, or commercially exploit Brake.
+3. Rebrand Brake or offer it as your own product.
+4. Publish modified builds for others to download.
+5. Use Brake or substantial parts of it in a competing commercial product.
+6. Remove copyright, license, or attribution notices.
+
+Contributions submitted to the project may be used by the copyright holder in
+Brake, including in future free or paid versions, unless a separate written
+agreement says otherwise.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS FOR
+A PARTICULAR PURPOSE, AND NON-INFRINGEMENT. IN NO EVENT SHALL THE COPYRIGHT
+HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY ARISING FROM USE OF
+THE SOFTWARE.
+
+If you want to redistribute, modify publicly, use commercially, or build on
+Brake for another product, contact the copyright holder first.

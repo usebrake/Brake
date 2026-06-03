@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+desktop/node_modules/
+.pytest_cache/
+.mypy_cache/
+
+# Build artifacts
+build/
+dist/
+desktop/dist/
+*.spec
+*.zip
+*.exe
+
+# Local state (never commit)
+HANDOFF.md
+DESIGN_HANDOFF.md
+CODEX_*_HANDOFF.md
+GO_TO_MARKET.md
+.claude/
+state.json
+state.key
+lockout.json
+probation.json
+recovery.json
+local_state/
+.brake-dev-data/
+.brake-electron-dev-data/
+.brake-recovery-test-data/
+logs/
+models/*.onnx
+C:/ProgramData/LockItUp/
+
+# Raw design/reference exports (large; production assets live in lockitup/gui/assets)
+Design Elements/
+
+# IDE
+.vscode/
+.idea/
+*.swp

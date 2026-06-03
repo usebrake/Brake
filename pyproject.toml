@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lockitup"
+version = "0.1.3b0"
+description = "Local password-gated screen-content accountability daemon for Windows."
+requires-python = ">=3.11"
+readme = "README.md"
+license = { text = "Source Available Beta License" }
+
+[tool.setuptools.packages.find]
+include = ["lockitup*"]
+exclude = ["tests*"]

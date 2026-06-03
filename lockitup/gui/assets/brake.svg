@@ -1,0 +1,12 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="g" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="11"></feGaussianBlur>
+    </filter>
+  </defs>
+  <rect x="64" y="64" width="384" height="384" rx="96" fill="none" stroke="#e6cd9b" stroke-width="10" opacity="0.55" filter="url(#g)"></rect>
+  <rect x="64" y="64" width="384" height="384" rx="96" fill="#0b0e14"></rect>
+  <rect x="64" y="64" width="384" height="384" rx="96" stroke="#e6cd9b" stroke-width="8" stroke-opacity="0.18"></rect>
+  <rect x="180" y="160" width="56" height="192" rx="8" fill="#e6cd9b"></rect>
+  <rect x="276" y="160" width="56" height="192" rx="8" fill="#e6cd9b"></rect>
+</svg>

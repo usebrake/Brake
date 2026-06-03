@@ -1,0 +1,27 @@
+# NudeNet cadence — fast because the model is cheap (~300ms per scan).
+scan_interval_seconds: 3
+
+lockout_duration_seconds: 600  # fallback only — actual duration comes from State.lockout_duration_minutes
+
+nudity:
+  enabled: true
+  # Balanced policy is label-specific in lockitup.detectors.nudity.
+  # This value is kept for backward-compatible config loading.
+  confidence_threshold: 0.35
+  trigger_classes:
+    - FEMALE_BREAST_EXPOSED
+    - FEMALE_GENITALIA_EXPOSED
+    - MALE_GENITALIA_EXPOSED
+    - BUTTOCKS_EXPOSED
+    - ANUS_EXPOSED
+
+logging:
+  level: INFO
+  max_bytes: 1048576
+  backup_count: 3
+
+hardening:
+  block_taskmgr: true
+  block_appwiz: true
+  block_timedate: true
+  poll_interval_ms: 250

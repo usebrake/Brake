@@ -1,0 +1,488 @@
+﻿/* Brake main GUI stylesheet.
+ *
+ * Single source of truth for visual tokens. The full token spec lives in
+ * DESIGN_HANDOFF.md. Palette is "Palette 1" â€” deep teal, warm charcoal,
+ * cream, amber, coral.
+ *
+ * Tone: quiet confidence. Single status module, no nested dark cards,
+ * accent colors only where they communicate state.
+ *
+ * Fonts: Geist + Geist Mono are loaded at app startup by
+ * lockitup.gui.assets.load_bundled_fonts(). If loading fails the stack
+ * falls back to Segoe UI so nothing breaks.
+ *
+ * Palette tokens (kept here as comments for grep-ability):
+ *   brand-gold       #e6cd9b   primary buttons, selection, brand mark
+ *   brand-gold-hover #f0dba9   primary hover
+ *   state-teal       #5eead4   protected/safe state
+ *   bg-app           #0b0e14   window background
+ *   bg-surface       #171b24   status module, input wells
+ *   bg-border        #2b313d   1px hairlines
+ *   text-primary     #f3f0e6   headings, state labels
+ *   text-body        #c7c0ad   paragraph text
+ *   text-muted       #8f96a3   captions, hints
+ *   state-amber      #ffb454   commitment
+ *   state-coral      #f07178   critical / error
+ */
+
+/* ---------- root ----------
+ *
+ * Only paint the top-level container widgets. If we put a background on
+ * the bare QWidget selector, it cascades to every QLabel/QFrame and you
+ * get dark boxes inside lighter cards (which is exactly what we don't
+ * want). Backgrounds go on actual surfaces; everything else inherits
+ * transparency.
+ */
+
+* {
+    color: #f3f0e6;
+    font-family: "Geist", "Segoe UI Variable", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    font-size: 13px;
+    outline: 0;
+}
+
+QMainWindow,
+QDialog,
+QWidget#AppRoot,
+QWidget#TabPage,
+QScrollArea#TabPage,
+QTabWidget::pane {
+    background-color: #0b0e14;
+}
+
+QScrollArea {
+    background-color: #0b0e14;
+    border: 0;
+}
+
+QLabel {
+    background: transparent;
+}
+
+QTabBar {
+    background: transparent;
+}
+
+/* ---------- header / identity ---------- */
+
+QLabel#AppTitle {
+    color: #f3f0e6;
+    font-size: 30px;
+    font-weight: 700;
+    letter-spacing: -0.6px;
+}
+
+QLabel#AppSubtitle {
+    color: #8f96a3;
+    font-size: 13px;
+    font-weight: 400;
+    padding-top: 2px;
+}
+
+/* ---------- tabs ---------- */
+
+QTabWidget::pane {
+    border: 0;
+    top: -1px;
+}
+
+QTabBar::tab {
+    background: transparent;
+    color: #8f96a3;
+    padding: 10px 0 12px 0;
+    margin-right: 24px;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    font-weight: 500;
+    font-size: 13px;
+}
+
+QTabBar::tab:selected {
+    color: #f3f0e6;
+    border-bottom-color: #e6cd9b;
+}
+
+QTabBar::tab:hover:!selected {
+    color: #c7c0ad;
+}
+
+/* ---------- dividers + section labels ---------- */
+
+QFrame#Divider {
+    background-color: #2b313d;
+    border: 0;
+    max-height: 1px;
+}
+
+QLabel#SectionTitle {
+    color: #f3f0e6;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+/* ---------- status module (the big card on Overview) ---------- */
+
+QFrame#StatusModule {
+    background-color: #11151d;
+    border: 1px solid #2b313d;
+    border-radius: 10px;
+}
+
+/* Left vertical accent rail. Color shifts with state via objectName swap
+ * (StatusRailEnabled / StatusRailCommitted / StatusRailDisabled) â€” but
+ * for now we use the default teal; refresh sets the pixmap tone and
+ * that's enough state signal. The rail is a constant brand presence. */
+QFrame#StatusRail {
+    background-color: #e6cd9b;
+    border-top-left-radius: 10px;
+    border-bottom-left-radius: 10px;
+}
+
+QLabel#StatusBigLabel,
+QLabel#StatusBigLabelEnabled,
+QLabel#StatusBigLabelCommitted,
+QLabel#StatusBigLabelDisabled {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    padding: 0;
+    margin: 0;
+}
+
+QLabel#StatusBigLabel        { color: #f3f0e6; }
+QLabel#StatusBigLabelEnabled  { color: #5eead4; }
+QLabel#StatusBigLabelCommitted { color: #ffb454; }
+QLabel#StatusBigLabelDisabled  { color: #8f96a3; }
+
+QLabel#StatusSubLine {
+    color: #8f96a3;
+    font-size: 13px;
+    font-weight: 400;
+}
+
+/* ---------- inline commitment block ---------- */
+
+QLabel#CommitmentInline {
+    color: #c7c0ad;
+    font-size: 13px;
+}
+
+QLabel#CommitmentInlineActive {
+    color: #ffb454;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+QLabel#InlineLabel {
+    color: #c7c0ad;
+    font-size: 13px;
+}
+
+/* Eyebrows align inline rows â€” larger fixed-width column. */
+QLabel#Eyebrow,
+QLabel#FieldLabel {
+    color: #737b89;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+}
+
+/* ---------- bottom button bar ---------- */
+
+QWidget#BottomBar {
+    background-color: #0b0e14;
+}
+
+/* ---------- diagnostics + body text ---------- */
+
+QLabel#ServiceValue,
+QLabel#BodyText,
+QLabel#DevHint {
+    color: #8f96a3;
+    font-size: 12px;
+}
+
+/* ---------- buttons ---------- */
+
+QPushButton {
+    background-color: transparent;
+    color: #c7c0ad;
+    border: 1px solid #2b313d;
+    padding: 10px 18px;
+    border-radius: 8px;
+    min-width: 124px;
+    font-weight: 500;
+    font-size: 13px;
+}
+
+QPushButton:hover {
+    background-color: #171b24;
+    border-color: #3a4250;
+    color: #f3f0e6;
+}
+
+QPushButton:pressed {
+    background-color: #11151d;
+}
+
+QPushButton:focus {
+    /* Buttons should look identical whether or not they have keyboard
+     * focus. The Qt platform style otherwise draws a dotted focus
+     * rectangle that lingers after click. */
+    outline: 0;
+}
+
+QPushButton:disabled {
+    color: #656c78;
+    background-color: transparent;
+    border-color: #171b24;
+}
+
+QPushButton#PrimaryButton {
+    background-color: #e6cd9b;
+    border: 1px solid #e6cd9b;
+    color: #0b0e14;
+    font-weight: 600;
+}
+
+QPushButton#PrimaryButton:hover {
+    background-color: #f0dba9;
+    border-color: #f0dba9;
+    color: #0b0e14;
+}
+
+QPushButton#PrimaryButton:pressed {
+    background-color: #c8aa70;
+    border-color: #c8aa70;
+}
+
+QPushButton#AccentButton {
+    background-color: transparent;
+    border: 1px solid #b68d50;
+    color: #ffb454;
+    font-weight: 500;
+}
+
+QPushButton#AccentButton:hover {
+    background-color: #201a10;
+    border-color: #e6cd9b;
+    color: #f0dba9;
+}
+
+QPushButton#SecondaryButton {
+    background-color: transparent;
+    border-color: #2b313d;
+    color: #c7c0ad;
+    min-width: 100px;
+}
+
+QPushButton#SecondaryButton:hover {
+    background-color: #171b24;
+    border-color: #3a4250;
+    color: #f3f0e6;
+}
+
+QPushButton#SubtleButton {
+    background-color: transparent;
+    border-color: transparent;
+    color: #8f96a3;
+    min-width: 0;
+    padding: 6px 8px;
+    font-weight: 500;
+}
+
+QPushButton#SubtleButton:hover {
+    background-color: transparent;
+    border-color: transparent;
+    color: #f3f0e6;
+}
+
+QPushButton#IconButton {
+    background-color: transparent;
+    border: 0;
+    color: #8f96a3;
+    min-width: 0;
+    padding: 4px 6px;
+    font-size: 14px;
+}
+
+QPushButton#IconButton:hover {
+    color: #f3f0e6;
+}
+
+/* ---------- form controls ---------- */
+
+QSpinBox,
+QLineEdit,
+QComboBox {
+    background-color: #171b24;
+    border: 1px solid #2b313d;
+    border-radius: 6px;
+    padding: 8px 10px;
+    selection-background-color: #e6cd9b;
+    selection-color: #0b0e14;
+    color: #f3f0e6;
+    font-size: 13px;
+}
+
+QSpinBox:focus,
+QLineEdit:focus,
+QComboBox:focus {
+    border-color: #e6cd9b;
+    background-color: #161a23;
+}
+
+QComboBox QAbstractItemView {
+    background-color: #171b24;
+    color: #f3f0e6;
+    border: 1px solid #2b313d;
+    outline: 0;
+    padding: 4px 0;
+    selection-background-color: #e6cd9b;
+    selection-color: #0b0e14;
+}
+
+QComboBox QAbstractItemView::item {
+    min-height: 24px;
+    padding: 4px 8px;
+}
+
+QLineEdit#RecoveryToken {
+    font-family: "Geist Mono", "Cascadia Mono", "Consolas", monospace;
+    font-size: 14px;
+    color: #5eead4;
+    padding: 12px 14px;
+    background-color: #11151d;
+    border-color: #2b313d;
+    selection-background-color: #5eead4;
+    selection-color: #0b0e14;
+    letter-spacing: 0.5px;
+}
+
+QCheckBox {
+    color: #c7c0ad;
+    spacing: 8px;
+    font-size: 13px;
+}
+
+QCheckBox::indicator {
+    width: 16px;
+    height: 16px;
+    border: 1px solid #2b313d;
+    border-radius: 4px;
+    background-color: #171b24;
+}
+
+QCheckBox::indicator:checked {
+    background-color: #e6cd9b;
+    border-color: #e6cd9b;
+    image: none;
+}
+
+QCheckBox::indicator:hover {
+    border-color: #e6cd9b;
+}
+
+/* ---------- dialogs ---------- */
+
+QMessageBox,
+QDialog {
+    background-color: #0b0e14;
+}
+
+QDialogButtonBox QPushButton {
+    min-width: 92px;
+}
+
+/* recovery dialog */
+
+QLabel#RecoveryTitle {
+    color: #f3f0e6;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+QLabel#RecoveryBody {
+    color: #c7c0ad;
+    font-size: 13px;
+}
+
+QLabel#RecoveryWarn {
+    color: #ffb454;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+/* setup wizard intro */
+
+QLabel#WizardIntro {
+    color: #c7c0ad;
+    font-size: 13px;
+}
+
+QLabel#WizardError {
+    color: #f07178;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+/* readiness dialog */
+
+QLabel#ReadinessHead {
+    color: #f3f0e6;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+QLabel#ReadinessIssueBlocker {
+    color: #f07178;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+QLabel#ReadinessIssueWarning {
+    color: #ffb454;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+/* ---------- tooltips ---------- */
+
+QToolTip {
+    background-color: #171b24;
+    color: #f3f0e6;
+    border: 1px solid #2b313d;
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+}
+
+/* ---------- scrollbars ---------- */
+
+QScrollBar:vertical {
+    background: transparent;
+    width: 10px;
+    margin: 0;
+}
+
+QScrollBar::handle:vertical {
+    background: #2b313d;
+    min-height: 24px;
+    border-radius: 5px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: #3a4250;
+}
+
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical {
+    height: 0;
+}
+
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical {
+    background: transparent;
+}
+

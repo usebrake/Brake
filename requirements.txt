@@ -1,0 +1,30 @@
+# Detection
+nudenet>=3.0.8
+onnxruntime>=1.17
+opencv-python-headless>=4.9
+Pillow>=10.0
+
+# Illustrated/anime NSFW (Falconsai/nsfw_image_detection on HuggingFace).
+# Optional but recommended — without these the anime_nsfw detector silently
+# skips and only photographic NudeNet runs.
+transformers>=4.30
+torch>=2.0
+
+# Capture
+mss>=9.0
+
+# GUI
+PyQt6>=6.6
+
+# Windows integration
+pywin32>=306
+keyboard>=0.13.5
+psutil>=5.9
+
+# Crypto / state
+argon2-cffi>=23.1
+cryptography>=42.0
+
+# Config & utils
+PyYAML>=6.0
+pydantic>=2.5
