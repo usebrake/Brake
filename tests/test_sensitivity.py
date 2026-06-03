@@ -2,14 +2,20 @@
 from __future__ import annotations
 
 import os
+import sys
+from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 import tempfile
 from dataclasses import dataclass
 from typing import Callable
 
 from PIL import Image
 
-_TEST_DATA_DIR = tempfile.TemporaryDirectory(prefix="lockitup-sensitivity-")
-os.environ["LOCKITUP_DATA_DIR"] = _TEST_DATA_DIR.name
+_TEST_DATA_DIR = tempfile.TemporaryDirectory(prefix="brake-sensitivity-")
+os.environ["BRAKE_DATA_DIR"] = _TEST_DATA_DIR.name
 
 
 @dataclass
@@ -22,7 +28,7 @@ class _Call:
 
 class _Store:
     def __init__(self, sensitivity: str) -> None:
-        from lockitup.state.schema import State
+        from brake.state.schema import State
 
         self.state = State(password_hash="hash", enabled=True, detection_sensitivity=sensitivity)
 
@@ -39,7 +45,7 @@ class _Detector:
 
 
 def _context_hit(label: str = "CONTEXT NUDITY (BUTTOCKS_EXPOSED)"):
-    from lockitup.detectors.base import DetectionResult
+    from brake.detectors.base import DetectionResult
 
     return DetectionResult(
         detector="nudity",
@@ -51,7 +57,7 @@ def _context_hit(label: str = "CONTEXT NUDITY (BUTTOCKS_EXPOSED)"):
 
 
 def _hard_hit(label: str = "EXPLICIT (MALE_GENITALIA_EXPOSED)"):
-    from lockitup.detectors.base import DetectionResult
+    from brake.detectors.base import DetectionResult
 
     return DetectionResult(
         detector="nudity",
@@ -63,7 +69,7 @@ def _hard_hit(label: str = "EXPLICIT (MALE_GENITALIA_EXPOSED)"):
 
 
 def _very_high_hard_hit(label: str = "EXPLICIT (MALE_GENITALIA_EXPOSED)"):
-    from lockitup.detectors.base import DetectionResult
+    from brake.detectors.base import DetectionResult
 
     return DetectionResult(
         detector="nudity",
@@ -75,7 +81,7 @@ def _very_high_hard_hit(label: str = "EXPLICIT (MALE_GENITALIA_EXPOSED)"):
 
 
 def _soft_context_hit(label: str = "CONTEXT NUDITY (BUTTOCKS_EXPOSED)"):
-    from lockitup.detectors.base import DetectionResult
+    from brake.detectors.base import DetectionResult
 
     return DetectionResult(
         detector="nudity",
@@ -87,7 +93,7 @@ def _soft_context_hit(label: str = "CONTEXT NUDITY (BUTTOCKS_EXPOSED)"):
 
 
 def _watcher(sensitivity: str):
-    from lockitup.service.watcher import Watcher
+    from brake.service.watcher import Watcher
 
     return Watcher(store=_Store(sensitivity))
 
@@ -125,7 +131,7 @@ def _patch_monotonic(watcher_mod, values: list[float]) -> Callable[[], None]:
 
 
 def test_balanced_context_spawns_warning_no_shutdown() -> None:
-    import lockitup.service.watcher as watcher_mod
+    import brake.service.watcher as watcher_mod
 
     calls, original_spawn = _patch_lockout(watcher_mod)
     restore_time = _patch_monotonic(watcher_mod, [100.0])
@@ -143,7 +149,7 @@ def test_balanced_context_spawns_warning_no_shutdown() -> None:
 
 
 def test_balanced_suppresses_second_hit_within_cooldown() -> None:
-    import lockitup.service.watcher as watcher_mod
+    import brake.service.watcher as watcher_mod
 
     calls, original_spawn = _patch_lockout(watcher_mod)
     restore_time = _patch_monotonic(watcher_mod, [100.0, 101.0])
@@ -160,7 +166,7 @@ def test_balanced_suppresses_second_hit_within_cooldown() -> None:
 
 
 def test_strict_first_hit_only_sets_pending() -> None:
-    import lockitup.service.watcher as watcher_mod
+    import brake.service.watcher as watcher_mod
 
     calls, original_spawn = _patch_lockout(watcher_mod)
     restore_time = _patch_monotonic(watcher_mod, [100.0])
@@ -177,7 +183,7 @@ def test_strict_first_hit_only_sets_pending() -> None:
 
 
 def test_strict_second_hit_confirms_within_window() -> None:
-    import lockitup.service.watcher as watcher_mod
+    import brake.service.watcher as watcher_mod
 
     calls, original_spawn = _patch_lockout(watcher_mod)
     restore_time = _patch_monotonic(watcher_mod, [100.0, 105.0, 105.0])
@@ -197,7 +203,7 @@ def test_strict_second_hit_confirms_within_window() -> None:
 
 
 def test_strict_cumulative_ladder() -> None:
-    import lockitup.service.watcher as watcher_mod
+    import brake.service.watcher as watcher_mod
 
     calls, original_spawn = _patch_lockout(watcher_mod)
     restore_time = _patch_monotonic(watcher_mod, [100.0, 101.0, 102.0])
@@ -217,7 +223,7 @@ def test_strict_cumulative_ladder() -> None:
 
 
 def test_strict_reset_after_idle_window() -> None:
-    import lockitup.service.watcher as watcher_mod
+    import brake.service.watcher as watcher_mod
 
     calls, original_spawn = _patch_lockout(watcher_mod)
     restore_time = _patch_monotonic(watcher_mod, [100.0, 101.0 + watcher_mod.STRICT_RESET_SECONDS])
@@ -238,7 +244,7 @@ def test_strict_reset_after_idle_window() -> None:
 
 
 def test_light_scan_ignores_context_hits() -> None:
-    import lockitup.service.watcher as watcher_mod
+    import brake.service.watcher as watcher_mod
 
     original_capture = watcher_mod.capture_all_monitors
     try:
@@ -252,7 +258,7 @@ def test_light_scan_ignores_context_hits() -> None:
 
 
 def test_soft_context_scan_does_not_trigger_warning() -> None:
-    import lockitup.service.watcher as watcher_mod
+    import brake.service.watcher as watcher_mod
 
     original_capture = watcher_mod.capture_all_monitors
     try:
@@ -266,7 +272,7 @@ def test_soft_context_scan_does_not_trigger_warning() -> None:
 
 
 def test_hard_first_hit_only_sets_pending() -> None:
-    import lockitup.service.watcher as watcher_mod
+    import brake.service.watcher as watcher_mod
 
     calls, original_spawn = _patch_lockout(watcher_mod)
     restore_time = _patch_monotonic(watcher_mod, [100.0])
@@ -283,7 +289,7 @@ def test_hard_first_hit_only_sets_pending() -> None:
 
 
 def test_very_high_hard_hit_immediately_confirms_lockout() -> None:
-    import lockitup.service.watcher as watcher_mod
+    import brake.service.watcher as watcher_mod
 
     calls, original_spawn = _patch_lockout(watcher_mod)
     restore_time = _patch_monotonic(watcher_mod, [100.0])
@@ -301,7 +307,7 @@ def test_very_high_hard_hit_immediately_confirms_lockout() -> None:
 
 
 def test_hard_second_hit_confirms_lockout() -> None:
-    import lockitup.service.watcher as watcher_mod
+    import brake.service.watcher as watcher_mod
 
     calls, original_spawn = _patch_lockout(watcher_mod)
     restore_time = _patch_monotonic(watcher_mod, [100.0, 104.0])
@@ -320,7 +326,7 @@ def test_hard_second_hit_confirms_lockout() -> None:
 
 
 def test_hard_second_hit_can_change_label() -> None:
-    import lockitup.service.watcher as watcher_mod
+    import brake.service.watcher as watcher_mod
 
     calls, original_spawn = _patch_lockout(watcher_mod)
     restore_time = _patch_monotonic(watcher_mod, [100.0, 112.0])

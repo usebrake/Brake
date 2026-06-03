@@ -9,7 +9,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $distRoot = Join-Path $repoRoot "dist"
 $workRoot = Join-Path $repoRoot "build\pyinstaller"
 $specRoot = Join-Path $repoRoot "build\spec"
-$bundle = Join-Path $distRoot "LockItUp"
+$bundle = Join-Path $distRoot "brake"
 
 Write-Host "Repo: $repoRoot"
 Write-Host "Bundle: $bundle"
@@ -32,9 +32,9 @@ function Build-App($name, $entry, $windowed) {
         return
     }
     $configSrc = Join-Path $repoRoot "config"
-    $assetsSrc = Join-Path $repoRoot "lockitup\gui\assets"
-    $iconSrc = Join-Path $repoRoot "lockitup\gui\assets\brake.ico"
-    $stylesSrc = Join-Path $repoRoot "lockitup\gui\styles.qss"
+    $assetsSrc = Join-Path $repoRoot "brake\\gui\assets"
+    $iconSrc = Join-Path $repoRoot "brake\\gui\assets\brake.ico"
+    $stylesSrc = Join-Path $repoRoot "brake\\gui\styles.qss"
     $entrySrc = Join-Path $repoRoot $entry
     $args = @(
         "-m", "PyInstaller",
@@ -52,8 +52,8 @@ function Build-App($name, $entry, $windowed) {
         "--hidden-import", "servicemanager",
         "--hidden-import", "win32timezone",
         "--add-data", "$configSrc;config",
-        "--add-data", "$assetsSrc;lockitup\gui\assets",
-        "--add-data", "$stylesSrc;lockitup\gui",
+        "--add-data", "$assetsSrc;brake\\gui\assets",
+        "--add-data", "$stylesSrc;brake\\gui",
         $entrySrc
     )
     if ($windowed) {
@@ -65,16 +65,16 @@ function Build-App($name, $entry, $windowed) {
     if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed for $name with exit code $LASTEXITCODE" }
 }
 
-Build-App "LockItUp" "packaging\entry_gui.py" $true
-Build-App "LockItUpAgent" "packaging\entry_agent.py" $true
-Build-App "LockItUpLockout" "packaging\entry_lockout.py" $true
-Build-App "LockItUpUninstallGuard" "packaging\entry_uninstall_guard.py" $true
-Build-App "LockItUpService" "packaging\entry_service.py" $false
-Build-App "LockItUpWatchdog" "packaging\entry_watchdog.py" $false
+Build-App "brake" "packaging\entry_gui.py" $true
+Build-App "BrakeAgent" "packaging\entry_agent.py" $true
+Build-App "BrakeLockout" "packaging\entry_lockout.py" $true
+Build-App "BrakeUninstallGuard" "packaging\entry_uninstall_guard.py" $true
+Build-App "BrakeService" "packaging\entry_service.py" $false
+Build-App "BrakeWatchdog" "packaging\entry_watchdog.py" $false
 
 Write-Host ""
 Write-Host "Flattening executable folders into $bundle..."
-foreach ($name in @("LockItUpAgent", "LockItUpLockout", "LockItUpUninstallGuard", "LockItUpService", "LockItUpWatchdog")) {
+foreach ($name in @("BrakeAgent", "BrakeLockout", "BrakeUninstallGuard", "BrakeService", "BrakeWatchdog")) {
     $src = Join-Path $distRoot $name
     if (-not (Test-Path $src)) { throw "Missing build output: $src" }
     Copy-Item -Path (Join-Path $src "*") -Destination $bundle -Recurse -Force
@@ -87,7 +87,7 @@ Copy-Item -Path (Join-Path $repoRoot "LICENSE") -Destination $bundle -Force
 Copy-Item -Path (Join-Path $repoRoot "PRIVACY.md") -Destination $bundle -Force
 Copy-Item -Path (Join-Path $repoRoot "SECURITY.md") -Destination $bundle -Force
 
-$zip = Join-Path $distRoot "LockItUp-$Version-portable-dev.zip"
+$zip = Join-Path $distRoot "Brake-$Version-portable-dev.zip"
 if (Test-Path $zip) { Remove-Item -LiteralPath $zip -Force }
 Compress-Archive -Path (Join-Path $bundle "*") -DestinationPath $zip
 
@@ -106,4 +106,4 @@ Write-Host "  $bundle"
 Write-Host "  $zip"
 Write-Host "  $shaFile"
 Write-Host ""
-Write-Host "Next: install Inno Setup and run packaging\build_inno.ps1 to create LockItUpSetup-$Version.exe"
+Write-Host "Next: install Inno Setup and run packaging\build_inno.ps1 to create BrakeSetup-$Version.exe"

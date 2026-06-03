@@ -27,15 +27,15 @@ function Resolve-GuiTarget {
 
     return @{
         Target = $pythonw
-        Args = "-m lockitup.gui"
+        Args = "-m brake.gui"
     }
 }
 
 $target = Resolve-GuiTarget
 $shortcutDir = Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\Brake"
-$shortcutPath = Join-Path $shortcutDir "Brake.lnk"
-$legacyShortcutDir = Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\LockItUp"
-$iconPath = Join-Path $RepoRoot "lockitup\gui\assets\brake.ico"
+$shortcutPath = Join-Path $shortcutDir "brake.lnk"
+$legacyShortcutDir = Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\\Brake"
+$iconPath = Join-Path $RepoRoot "brake\\gui\assets\brake.ico"
 
 New-Item -ItemType Directory -Force -Path $shortcutDir | Out-Null
 if (Test-Path $legacyShortcutDir) {

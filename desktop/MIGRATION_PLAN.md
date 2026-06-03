@@ -46,7 +46,7 @@ business logic in JavaScript.
 
 Only after the Electron GUI can fully control the app:
 
-- stop using `python -m lockitup.gui`
+- stop using `python -m brake.gui`
 - update shortcuts to launch the Electron app
 - keep Python service/agent/lockout processes as the backend engine
 

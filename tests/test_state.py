@@ -7,18 +7,22 @@ import sys
 import tempfile
 from pathlib import Path
 
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
 
 def _fresh_store(tmp: Path):
-    os.environ["LOCKITUP_DATA_DIR"] = str(tmp)
-    for mod in [k for k in list(sys.modules) if k == "lockitup" or k.startswith("lockitup.")]:
+    os.environ["BRAKE_DATA_DIR"] = str(tmp)
+    for mod in [k for k in list(sys.modules) if k == "brake" or k.startswith("brake.")]:
         del sys.modules[mod]
-    from lockitup.state import State, StateStore, StateTamperedError
-    from lockitup.state import crypto
+    from brake.state import State, StateStore, StateTamperedError
+    from brake.state import crypto
     return StateStore(state_path=tmp / "state.json", key_path=tmp / "state.key"), State, StateTamperedError, crypto
 
 
 def _write_envelope(tmp: Path, payload: dict, crypto_mod) -> None:
-    from lockitup.state.store import _canonical
+    from brake.state.store import _canonical
 
     key = crypto_mod.load_or_create_hmac_key(tmp / "state.key")
     envelope = {"payload": payload, "hmac": crypto_mod.sign(_canonical(payload), key)}
@@ -103,7 +107,7 @@ def test_missing_state_returns_none(tmp: Path) -> None:
 
 def test_deletion_bypass_refused(tmp: Path) -> None:
     store, State, _, crypto_mod = _fresh_store(tmp)
-    from lockitup.state import StateMissingError
+    from brake.state import StateMissingError
 
     state = State(password_hash=crypto_mod.hash_password("pw"), enabled=True)
     store.save(state)
@@ -318,7 +322,7 @@ def test_v8_to_v9_migration_seeds_recovery_unlock(tmp: Path) -> None:
 def test_recovery_unlock_schedule_and_apply(tmp: Path) -> None:
     store, State, _, crypto_mod = _fresh_store(tmp)
     from datetime import datetime, timedelta, timezone
-    from lockitup.state.recovery_unlock import apply_due_recovery_unlock, schedule_recovery_unlock
+    from brake.state.recovery_unlock import apply_due_recovery_unlock, schedule_recovery_unlock
 
     future = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(timespec="seconds")
     state = State(
@@ -347,7 +351,7 @@ def test_recovery_unlock_schedule_and_apply(tmp: Path) -> None:
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="lockitup-test-") as td:
+    with tempfile.TemporaryDirectory(prefix="brake-test-") as td:
         tmp = Path(td)
         print(f"Using temp dir: {tmp}")
         for fn in (

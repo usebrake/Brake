@@ -20,6 +20,6 @@ labels: bug
 
 ## Logs
 
-Attach relevant log lines from `C:\ProgramData\LockItUp\logs\`.
+Attach relevant log lines from `C:\ProgramData\\brake\\logs\`.
 
 Do not attach screenshots of explicit content, passwords, or recovery codes.

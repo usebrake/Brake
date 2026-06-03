@@ -7,12 +7,16 @@ import sys
 import tempfile
 from pathlib import Path
 
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
 
 def _fresh_env(tmp: Path):
-    os.environ["LOCKITUP_DATA_DIR"] = str(tmp)
-    for mod in [k for k in list(sys.modules) if k.startswith("lockitup.")]:
+    os.environ["BRAKE_DATA_DIR"] = str(tmp)
+    for mod in [k for k in list(sys.modules) if k.startswith("brake.")]:
         del sys.modules[mod]
-    from lockitup.escalation import ProbationStore, ProbationTamperedError
+    from brake.escalation import ProbationStore, ProbationTamperedError
     return ProbationStore(), ProbationTamperedError
 
 
@@ -47,7 +51,7 @@ def test_tamper_rejected(tmp: Path) -> None:
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="lockitup-escalation-") as td:
+    with tempfile.TemporaryDirectory(prefix="brake-escalation-") as td:
         tmp = Path(td)
         print(f"Using temp dir: {tmp}")
         for fn in (test_pending_then_activate_after_new_boot, test_tamper_rejected):

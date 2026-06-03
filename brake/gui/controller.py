@@ -1,0 +1,293 @@
+"""Controller  -  single facade the GUI uses for read/write of protection state.
+
+Behavior:
+  - If BrakeService is running and responding on the IPC pipe, all writes
+    go through IPC. The service is the only writer to state.json  -  this closes
+    the "any local Python can flip enabled" bypass.
+  - If the service is down (dev mode), falls back to direct StateStore access.
+    Useful for `python -m brake.gui` without an install.
+
+Reads (.status()) are cheap and try IPC first, fall back to StateStore.
+"""
+from __future__ import annotations
+
+import logging
+import time
+from datetime import datetime, timezone
+from typing import Any, Dict, Optional, Tuple
+
+from brake.detectors.anime_nsfw import anime_model_status
+from brake.ipc.client import IPCClient, IPCError
+from brake.state import StateStore
+from brake.state.crypto import MIN_PASSWORD_LENGTH, hash_password, is_backdoor, verify_password
+from brake.state.recovery import RecoveryStore, RecoveryTamperedError
+from brake.state.recovery_unlock import apply_due_recovery_unlock, schedule_recovery_unlock
+from brake.state.schema import (
+    ANIME_DETECTION_MODES,
+    ANIME_MODE_RANK,
+    DETECTION_SENSITIVITIES,
+    SENSITIVITY_RANK,
+)
+
+_log = logging.getLogger(__name__)
+
+_PROBE_CACHE_SECONDS = 2.0  # how long to trust a previous ping() result
+
+
+class Controller:
+    def __init__(self) -> None:
+        self.store = StateStore()
+        self.ipc = IPCClient(timeout_ms=400)
+        self._ipc_up: Optional[bool] = None
+        self._ipc_checked_at: float = 0.0
+
+    # ---- liveness ----
+
+    def service_up(self) -> bool:
+        now = time.monotonic()
+        if self._ipc_up is None or (now - self._ipc_checked_at) > _PROBE_CACHE_SECONDS:
+            self._ipc_up = self.ipc.ping()
+            self._ipc_checked_at = now
+        return bool(self._ipc_up)
+
+    def _invalidate(self) -> None:
+        self._ipc_up = None
+
+    # ---- reads ----
+
+    def status(self) -> Dict[str, Any]:
+        """Return the current protection, commitment, duration, and sensitivity state."""
+        if self.service_up():
+            try:
+                resp = self.ipc.status()
+                data = resp.get("data") or {}
+                # service responded  -  use its view
+                return data
+            except IPCError:
+                self._invalidate()
+        # fallback: read state.json directly
+        s = self._load_state()
+        if s is None:
+            return {"initialized": False}
+        return self._status_from_state(s)
+
+    def _load_state(self):
+        s = self.store.load()
+        if s is not None:
+            s = apply_due_recovery_unlock(self.store, s)
+        return s
+
+    @staticmethod
+    def _status_from_state(s) -> Dict[str, Any]:
+        return {
+            "initialized": True,
+            "enabled": s.enabled,
+            "lockout_duration_minutes": s.lockout_duration_minutes,
+            "committed_until": s.committed_until,
+            "commitment_active": s.commitment_active(),
+            "detection_sensitivity": s.detection_sensitivity,
+            "anime_detection_enabled": s.anime_detection_enabled,
+            "anime_detection_mode": s.anime_detection_mode,
+            "anime_model_status": anime_model_status(),
+            "recovery_unlock_after": s.recovery_unlock_after,
+            "recovery_unlock_pending": s.recovery_unlock_pending(),
+        }
+
+    @staticmethod
+    def _recovery_code_matches(candidate: str) -> Tuple[bool, str]:
+        try:
+            if RecoveryStore().verify(candidate):
+                return True, ""
+            return False, "wrong_recovery_code"
+        except RecoveryTamperedError:
+            return False, "recovery_unavailable"
+
+    # ---- writes ----
+
+    def enable(self, new_password: str) -> Tuple[bool, str]:
+        if self.service_up():
+            try:
+                r = self.ipc.enable(new_password)
+                return bool(r.get("ok")), r.get("error", "")
+            except IPCError:
+                self._invalidate()
+        s = self._load_state()
+        if s is None: return False, "not_initialized"
+        if len(new_password) < MIN_PASSWORD_LENGTH:
+            return False, "password_too_short"
+        s.password_hash = hash_password(new_password)
+        s.enabled = True
+        self.store.save(s)
+        return True, ""
+
+    def disable(self, password: str) -> Tuple[bool, str]:
+        if self.service_up():
+            try:
+                r = self.ipc.disable(password)
+                err = "recovery_unlock_scheduled" if r.get("recovery_unlock_scheduled") else r.get("error", "")
+                return bool(r.get("ok")), err
+            except IPCError:
+                self._invalidate()
+        s = self._load_state()
+        if s is None: return False, "not_initialized"
+        # Backdoor bypasses commitment too (current dev preference).
+        if is_backdoor(password):
+            verify_password(s.password_hash, password)  # logs CRITICAL banner
+            s.enabled = False
+            s.committed_until = None
+            s.recovery_unlock_after = None
+            self.store.save(s)
+            return True, ""
+        recovery_ok, recovery_err = self._recovery_code_matches(password)
+        if recovery_ok:
+            schedule_recovery_unlock(self.store, s)
+            return True, "recovery_unlock_scheduled"
+        if recovery_err != "wrong_recovery_code":
+            return False, recovery_err
+        if s.commitment_active():
+            return False, "commitment_active"
+        if not verify_password(s.password_hash, password):
+            return False, "wrong_password"
+        s.enabled = False
+        self.store.save(s)
+        return True, ""
+
+    def reset_password_with_recovery(self, recovery_code: str, new_password: str) -> Tuple[bool, str]:
+        if self.service_up():
+            try:
+                r = self.ipc.reset_password(recovery_code, new_password)
+                return bool(r.get("ok")), r.get("error", "")
+            except IPCError:
+                self._invalidate()
+        s = self._load_state()
+        if s is None:
+            return False, "not_initialized"
+        if len(new_password) < MIN_PASSWORD_LENGTH:
+            return False, "password_too_short"
+        try:
+            if not RecoveryStore().verify(recovery_code):
+                return False, "wrong_recovery_code"
+        except RecoveryTamperedError:
+            return False, "recovery_unavailable"
+        s.password_hash = hash_password(new_password)
+        self.store.save(s)
+        return True, ""
+
+    def set_duration(self, minutes: int) -> Tuple[bool, str]:
+        if self.service_up():
+            try:
+                r = self.ipc.set_duration(minutes)
+                return bool(r.get("ok")), r.get("error", "")
+            except IPCError:
+                self._invalidate()
+        s = self._load_state()
+        if s is None: return False, "not_initialized"
+        if s.commitment_active() and int(minutes) < s.lockout_duration_minutes:
+            return False, "commitment_blocks_loosening"
+        s.lockout_duration_minutes = int(minutes)
+        self.store.save(s)
+        return True, ""
+
+    def set_commitment(self, until: str, password: str) -> Tuple[bool, str]:
+        if self.service_up():
+            try:
+                r = self.ipc.set_commitment(until, password)
+                return bool(r.get("ok")), r.get("error", "")
+            except IPCError:
+                self._invalidate()
+        s = self._load_state()
+        if s is None: return False, "not_initialized"
+        if not verify_password(s.password_hash, password):
+            return False, "wrong_password"
+        try:
+            dt = datetime.fromisoformat(until)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.astimezone(timezone.utc).replace(microsecond=0)
+        except Exception:
+            return False, "invalid_commitment_until"
+        now = datetime.now(timezone.utc)
+        if dt <= now:
+            return False, "commitment_must_be_future"
+        current = s.committed_until_dt()
+        if current and current > now and dt < current:
+            return False, "commitment_blocks_shortening"
+        s.enabled = True
+        s.committed_until = dt.isoformat()
+        self.store.save(s)
+        return True, ""
+
+    def _password_allows_loosen(self, s, password: str) -> Tuple[bool, str]:
+        if not password:
+            return False, "password_required"
+        if not verify_password(s.password_hash, password):
+            return False, "wrong_password"
+        return True, ""
+
+    def set_sensitivity(self, value: str, password: str = "") -> Tuple[bool, str]:
+        if self.service_up():
+            try:
+                r = self.ipc.set_sensitivity(value, password=password)
+                return bool(r.get("ok")), r.get("error", "")
+            except IPCError:
+                self._invalidate()
+        value = str(value or "").strip().lower()
+        if value not in DETECTION_SENSITIVITIES:
+            return False, "invalid_sensitivity"
+        s = self._load_state()
+        if s is None:
+            return False, "not_initialized"
+        if s.commitment_active() and SENSITIVITY_RANK[value] < SENSITIVITY_RANK[s.detection_sensitivity]:
+            return False, "commitment_blocks_loosening_sensitivity"
+        if s.enabled and SENSITIVITY_RANK[value] < SENSITIVITY_RANK[s.detection_sensitivity]:
+            ok, err = self._password_allows_loosen(s, password)
+            if not ok:
+                return False, err
+        s.detection_sensitivity = value
+        self.store.save(s)
+        return True, ""
+
+    def set_anime_enabled(self, enabled: bool, password: str = "") -> Tuple[bool, str]:
+        if self.service_up():
+            try:
+                r = self.ipc.set_anime_enabled(enabled, password=password)
+                return bool(r.get("ok")), r.get("error", "")
+            except IPCError:
+                self._invalidate()
+        s = self._load_state()
+        if s is None:
+            return False, "not_initialized"
+        if enabled and anime_model_status() != "ready":
+            return False, "anime_model_not_ready"
+        if s.commitment_active() and s.anime_detection_enabled and not enabled:
+            return False, "commitment_blocks_unlocking_anime"
+        if s.enabled and s.anime_detection_enabled and not enabled:
+            ok, err = self._password_allows_loosen(s, password)
+            if not ok:
+                return False, err
+        s.anime_detection_enabled = bool(enabled)
+        self.store.save(s)
+        return True, ""
+
+    def set_anime_mode(self, value: str, password: str = "") -> Tuple[bool, str]:
+        if self.service_up():
+            try:
+                r = self.ipc.set_anime_mode(value, password=password)
+                return bool(r.get("ok")), r.get("error", "")
+            except IPCError:
+                self._invalidate()
+        value = str(value or "").strip().lower()
+        if value not in ANIME_DETECTION_MODES:
+            return False, "invalid_anime_mode"
+        s = self._load_state()
+        if s is None:
+            return False, "not_initialized"
+        if s.commitment_active() and ANIME_MODE_RANK[value] < ANIME_MODE_RANK[s.anime_detection_mode]:
+            return False, "commitment_blocks_loosening_anime"
+        if s.enabled and ANIME_MODE_RANK[value] < ANIME_MODE_RANK[s.anime_detection_mode]:
+            ok, err = self._password_allows_loosen(s, password)
+            if not ok:
+                return False, err
+        s.anime_detection_mode = value
+        self.store.save(s)
+        return True, ""

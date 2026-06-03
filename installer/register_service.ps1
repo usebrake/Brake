@@ -4,8 +4,8 @@
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$serviceExe = Join-Path $repoRoot "LockItUpService.exe"
-$watchdogExe = Join-Path $repoRoot "LockItUpWatchdog.exe"
+$serviceExe = Join-Path $repoRoot "BrakeService.exe"
+$watchdogExe = Join-Path $repoRoot "BrakeWatchdog.exe"
 $frozenInstall = (Test-Path $serviceExe) -and (Test-Path $watchdogExe)
 
 if (-not $frozenInstall) {
@@ -30,8 +30,8 @@ function Stop-IfRunning($svcName) {
     & sc.exe stop $svcName *> $null
 }
 
-Stop-IfRunning "LockItUpWatchdog"
-Stop-IfRunning "LockItUpService"
+Stop-IfRunning "BrakeWatchdog"
+Stop-IfRunning "BrakeService"
 Start-Sleep -Seconds 2
 
 if (-not $frozenInstall) {
@@ -52,7 +52,7 @@ if (-not $frozenInstall) {
         }
     }
 
-    # Make `import lockitup` discoverable for the SCM-launched service process.
+    # Make `import brake` discoverable for the SCM-launched service process.
     # Machine env is read by services on each start, so setting it here is enough.
     [Environment]::SetEnvironmentVariable("PYTHONPATH", $repoRoot, "Machine")
     $env:PYTHONPATH = $repoRoot
@@ -68,7 +68,7 @@ function Install-Svc($module, $svcName) {
     }
     Write-Host ""
     if ($frozenInstall) {
-        if ($svcName -eq "LockItUpService") {
+        if ($svcName -eq "BrakeService") {
             $exe = $serviceExe
         } else {
             $exe = $watchdogExe
@@ -88,25 +88,25 @@ function Configure-Failure($svcName) {
     & sc.exe config $svcName start= auto | Out-Null
 }
 
-Install-Svc "lockitup.service" "LockItUpService"
-Install-Svc "lockitup.watchdog" "LockItUpWatchdog"
+Install-Svc "brake.service" "BrakeService"
+Install-Svc "brake.watchdog" "BrakeWatchdog"
 
-Configure-Failure "LockItUpService"
-Configure-Failure "LockItUpWatchdog"
+Configure-Failure "BrakeService"
+Configure-Failure "BrakeWatchdog"
 
 Write-Host ""
 Write-Host "Starting services..."
-& sc.exe start LockItUpService    | Out-Null
-& sc.exe start LockItUpWatchdog   | Out-Null
+& sc.exe start BrakeService    | Out-Null
+& sc.exe start BrakeWatchdog   | Out-Null
 
 Start-Sleep -Seconds 1
-& sc.exe query LockItUpService
-& sc.exe query LockItUpWatchdog
+& sc.exe query BrakeService
+& sc.exe query BrakeWatchdog
 
 Write-Host ""
 Write-Host "Creating Start Menu shortcut..."
 try {
-    $guiExe = Join-Path $repoRoot "LockItUp.exe"
+    $guiExe = Join-Path $repoRoot "brake.exe"
     if (-not (Test-Path $guiExe)) { $guiExe = "" }
     & (Join-Path $PSScriptRoot "create_shortcuts.ps1") -RepoRoot $repoRoot -PythonPath $python -GuiExe $guiExe
 } catch {
@@ -114,5 +114,5 @@ try {
 }
 
 Write-Host ""
-Write-Host "Done. Verify with: sc query LockItUpService"
-Write-Host "Logs: $env:ProgramData\LockItUp\logs\"
+Write-Host "Done. Verify with: sc query BrakeService"
+Write-Host "Logs: $env:ProgramData\\brake\\logs\"

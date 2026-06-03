@@ -11,12 +11,16 @@ import sys
 import tempfile
 from pathlib import Path
 
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
 
 def _fresh_env(tmp: Path):
-    os.environ["LOCKITUP_DATA_DIR"] = str(tmp)
-    for mod in [k for k in list(sys.modules) if k.startswith("lockitup.")]:
+    os.environ["BRAKE_DATA_DIR"] = str(tmp)
+    for mod in [k for k in list(sys.modules) if k.startswith("brake.")]:
         del sys.modules[mod]
-    from lockitup.ipc import protocol
+    from brake.ipc import protocol
     return protocol
 
 
@@ -77,7 +81,7 @@ def test_max_frame_enforced(tmp: Path) -> None:
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="lockitup-ipc-") as td:
+    with tempfile.TemporaryDirectory(prefix="brake-ipc-") as td:
         tmp = Path(td)
         print(f"Using temp dir: {tmp}")
         for fn in (

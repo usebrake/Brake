@@ -6,10 +6,10 @@
 # emergency recovery code is accepted.
 $ErrorActionPreference = "Continue"
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$guardExe = Join-Path $repoRoot "LockItUpUninstallGuard.exe"
-$serviceExe = Join-Path $repoRoot "LockItUpService.exe"
-$watchdogExe = Join-Path $repoRoot "LockItUpWatchdog.exe"
-$dataDir = Join-Path $env:ProgramData "LockItUp"
+$guardExe = Join-Path $repoRoot "BrakeUninstallGuard.exe"
+$serviceExe = Join-Path $repoRoot "BrakeService.exe"
+$watchdogExe = Join-Path $repoRoot "BrakeWatchdog.exe"
+$dataDir = Join-Path $env:ProgramData "Brake"
 $agentPidFile = Join-Path $dataDir "agent.pid"
 $frozenInstall = (Test-Path $serviceExe) -and (Test-Path $watchdogExe)
 $python = $null
@@ -23,7 +23,7 @@ if ($frozenInstall -or $python) {
     if ($frozenInstall -and (Test-Path $guardExe)) {
         & $guardExe
     } else {
-        & $python -m lockitup.uninstall_guard
+        & $python -m brake.uninstall_guard
     }
     $guardExit = $LASTEXITCODE
     if ($guardExit -ne 0) {
@@ -36,19 +36,19 @@ if ($frozenInstall -or $python) {
     Write-Host "Uninstall authorized."
 }
 
-& sc.exe stop LockItUpWatchdog   | Out-Null
-& sc.exe stop LockItUpService    | Out-Null
+& sc.exe stop BrakeWatchdog   | Out-Null
+& sc.exe stop BrakeService    | Out-Null
 Start-Sleep -Seconds 2
 
 if ($frozenInstall) {
     & $watchdogExe remove
     & $serviceExe remove
 } elseif ($python) {
-    & $python -m lockitup.watchdog remove
-    & $python -m lockitup.service  remove
+    & $python -m brake.watchdog remove
+    & $python -m brake.service  remove
 } else {
-    & sc.exe delete LockItUpWatchdog
-    & sc.exe delete LockItUpService
+    & sc.exe delete BrakeWatchdog
+    & sc.exe delete BrakeService
 }
 
 function Stop-AgentIfRunning {
@@ -71,7 +71,7 @@ function Stop-AgentIfRunning {
     }
 }
 
-function Stop-LockItUpUserProcesses {
+function Stop-BrakeUserProcesses {
     Write-Host "Closing remaining Brake GUI/agent processes..."
     try {
         $processes = Get-CimInstance Win32_Process |
@@ -79,10 +79,10 @@ function Stop-LockItUpUserProcesses {
                 $_.Name -in @(
                     "python.exe",
                     "pythonw.exe",
-                    "LockItUp.exe",
-                    "LockItUpAgent.exe",
-                    "LockItUpLockout.exe",
-                    "LockItUpUninstallGuard.exe"
+                    "brake.exe",
+                    "BrakeAgent.exe",
+                    "BrakeLockout.exe",
+                    "BrakeUninstallGuard.exe"
                 )
             }
     } catch {
@@ -94,14 +94,14 @@ function Stop-LockItUpUserProcesses {
         if ($proc.ProcessId -eq $PID) { continue }
         $cmd = [string]$proc.CommandLine
         $exe = [string]$proc.ExecutablePath
-        $isLockItUp =
-            ($cmd.IndexOf("lockitup.gui", [StringComparison]::OrdinalIgnoreCase) -ge 0) -or
-            ($cmd.IndexOf("lockitup.agent", [StringComparison]::OrdinalIgnoreCase) -ge 0) -or
-            ($cmd.IndexOf("lockitup.lockout", [StringComparison]::OrdinalIgnoreCase) -ge 0) -or
-            ($cmd.IndexOf("LockItUp", [StringComparison]::OrdinalIgnoreCase) -ge 0) -or
-            ($exe.IndexOf("LockItUp", [StringComparison]::OrdinalIgnoreCase) -ge 0)
+        $isBrake =
+            ($cmd.IndexOf("brake.gui", [StringComparison]::OrdinalIgnoreCase) -ge 0) -or
+            ($cmd.IndexOf("brake.agent", [StringComparison]::OrdinalIgnoreCase) -ge 0) -or
+            ($cmd.IndexOf("brake.lockout", [StringComparison]::OrdinalIgnoreCase) -ge 0) -or
+            ($cmd.IndexOf("Brake", [StringComparison]::OrdinalIgnoreCase) -ge 0) -or
+            ($exe.IndexOf("Brake", [StringComparison]::OrdinalIgnoreCase) -ge 0)
 
-        if ($isLockItUp) {
+        if ($isBrake) {
             Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue
         }
     }
@@ -120,7 +120,7 @@ function Remove-DataDir {
 }
 
 Stop-AgentIfRunning
-Stop-LockItUpUserProcesses
+Stop-BrakeUserProcesses
 
 Write-Host "Removing login recovery autostart..."
 Remove-ItemProperty `
@@ -129,13 +129,13 @@ Remove-ItemProperty `
     -ErrorAction SilentlyContinue
 Remove-ItemProperty `
     -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" `
-    -Name "LockItUp" `
+    -Name "Brake" `
     -ErrorAction SilentlyContinue
 
 Write-Host "Removing Start Menu shortcut..."
 $shortcutDirs = @(
     (Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\Brake"),
-    (Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\LockItUp")
+    (Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\\Brake")
 )
 foreach ($shortcutDir in $shortcutDirs) {
     if (Test-Path $shortcutDir) {

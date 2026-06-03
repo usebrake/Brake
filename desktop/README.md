@@ -5,7 +5,7 @@ This is the current user-facing Brake app.
 The app is split into two parts:
 
 - `desktop/` is the Electron + React control panel.
-- `lockitup/` is still the Python backend package name for now. It owns detection, state, lockouts, recovery, commitment, and the local agent.
+- `brake/` is the Python backend package name for now. It owns detection, state, lockouts, recovery, commitment, and the local agent.
 
 The internal Python package name has not been renamed yet because keeping it stable avoids breaking the backend while the product is being finalized.
 
@@ -28,4 +28,4 @@ In dev mode, Electron stores local state in `.brake-electron-dev-data/` inside t
 
 ## Current Scope
 
-Electron is the primary GUI now. The older PyQt files are still present as a legacy/reference layer while the backend migration settles, but they are not the UI direction for Brake.
+Electron is the primary GUI now. The older PyQt files are still present as a legacy/reference layer while the backend migration settles, but they are not the UI direction for brake.

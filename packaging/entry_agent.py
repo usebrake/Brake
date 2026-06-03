@@ -1,3 +1,3 @@
-from lockitup.agent.main import main
+from brake.agent.main import main
 
 raise SystemExit(main())

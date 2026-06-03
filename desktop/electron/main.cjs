@@ -41,7 +41,7 @@ function backend(command, args = [], timeoutMs = 5000) {
   return new Promise((resolve) => {
     execFile(
       pythonExe,
-      ["-m", "lockitup.desktop_bridge", command, ...args],
+      ["-m", "brake.desktop_bridge", command, ...args],
       {
         cwd: repoRoot,
         env,
@@ -75,7 +75,7 @@ function backendEnv() {
   env.PYTHONPATH = [repoRoot, process.env.PYTHONPATH].filter(Boolean).join(path.delimiter);
   if (isDev) {
     env.BRAKE_DESKTOP_DEV = "1";
-    env.LOCKITUP_DATA_DIR = process.env.LOCKITUP_DATA_DIR || path.join(repoRoot, ".brake-electron-dev-data");
+    env.BRAKE_DATA_DIR = process.env.BRAKE_DATA_DIR || path.join(repoRoot, ".brake-electron-dev-data");
   }
   return env;
 }
@@ -84,7 +84,7 @@ function startDevAgent() {
   if (!isDev || devAgent) return;
   devAgent = spawn(
       pythonExe,
-      ["-m", "lockitup.agent"],
+      ["-m", "brake.agent"],
       {
         cwd: repoRoot,
         env: backendEnv(),

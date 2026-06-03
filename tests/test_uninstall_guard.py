@@ -7,13 +7,17 @@ import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
 
 def _fresh(tmp: Path):
-    os.environ["LOCKITUP_DATA_DIR"] = str(tmp)
-    for mod in [k for k in list(sys.modules) if k == "lockitup" or k.startswith("lockitup.")]:
+    os.environ["BRAKE_DATA_DIR"] = str(tmp)
+    for mod in [k for k in list(sys.modules) if k == "brake" or k.startswith("brake.")]:
         del sys.modules[mod]
-    from lockitup import uninstall_guard
-    from lockitup.state import State, StateStore, crypto
+    from brake import uninstall_guard
+    from brake.state import State, StateStore, crypto
     return uninstall_guard, State, StateStore, crypto
 
 
@@ -64,7 +68,7 @@ def test_enabled_without_commitment_recovery_schedules_cooldown(tmp: Path) -> No
     uninstall_guard._prompt_dialog = lambda _prompt: "recovery-code"
     uninstall_guard._block_with_dialog = lambda _message: None
     uninstall_guard.is_backdoor = lambda _typed: False
-    from lockitup.state.recovery import RecoveryStore
+    from brake.state.recovery import RecoveryStore
     RecoveryStore.verify = lambda _self, typed: typed == "recovery-code"  # type: ignore[method-assign]
 
     assert uninstall_guard.main() == 1
@@ -98,7 +102,7 @@ def test_active_commitment_recovery_schedules_cooldown(tmp: Path) -> None:
     uninstall_guard._prompt_dialog = lambda _prompt: "recovery-code"
     uninstall_guard._block_with_dialog = lambda _message: None
     uninstall_guard.is_backdoor = lambda _typed: False
-    from lockitup.state.recovery import RecoveryStore
+    from brake.state.recovery import RecoveryStore
     RecoveryStore.verify = lambda _self, typed: typed == "recovery-code"  # type: ignore[method-assign]
 
     assert uninstall_guard.main() == 1
@@ -111,7 +115,7 @@ def test_active_commitment_recovery_schedules_cooldown(tmp: Path) -> None:
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="lockitup-uninstall-") as td:
+    with tempfile.TemporaryDirectory(prefix="brake-uninstall-") as td:
         tmp = Path(td)
         print(f"Using temp dir: {tmp}")
         for fn in (

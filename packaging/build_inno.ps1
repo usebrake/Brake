@@ -5,7 +5,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$bundle = Join-Path $repoRoot "dist\LockItUp"
+$bundle = Join-Path $repoRoot "dist\\Brake"
 if (-not (Test-Path $bundle)) {
     throw "Missing $bundle. Run packaging\build_pyinstaller.ps1 first."
 }
@@ -27,14 +27,14 @@ if (-not $InnoCompiler -or -not (Test-Path $InnoCompiler)) {
     throw "Inno Setup compiler not found. Install Inno Setup 6 or pass -InnoCompiler C:\Path\ISCC.exe"
 }
 
-$env:LOCKITUP_BUILD_VERSION = $Version
-& $InnoCompiler (Join-Path $repoRoot "packaging\LockItUp.iss")
+$env:BRAKE_BUILD_VERSION = $Version
+& $InnoCompiler (Join-Path $repoRoot "packaging\brake.iss")
 if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
 
-$installer = Join-Path $repoRoot "dist\LockItUpSetup-$Version.exe"
+$installer = Join-Path $repoRoot "dist\\BrakeSetup-$Version.exe"
 if (Test-Path $installer) {
     $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $installer).Hash.ToLowerInvariant()
-    Add-Content -Encoding ASCII -Path (Join-Path $repoRoot "dist\SHA256SUMS.txt") -Value "$hash  LockItUpSetup-$Version.exe"
+    Add-Content -Encoding ASCII -Path (Join-Path $repoRoot "dist\SHA256SUMS.txt") -Value "$hash  BrakeSetup-$Version.exe"
 }
 
 Write-Host "Installer complete: $installer"

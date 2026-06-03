@@ -1,3 +1,3 @@
-from lockitup.gui.app import run
+from brake.gui.app import run
 
 raise SystemExit(run())

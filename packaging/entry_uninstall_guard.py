@@ -1,3 +1,3 @@
-from lockitup.uninstall_guard import main
+from brake.uninstall_guard import main
 
 raise SystemExit(main())

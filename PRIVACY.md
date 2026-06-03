@@ -4,9 +4,9 @@ Brake is designed to run locally.
 
 ## Data That Stays On Your PC
 
-- State: `C:\ProgramData\LockItUp\state.json`
-- Machine key: `C:\ProgramData\LockItUp\state.key`
-- Recovery token hash: `C:\ProgramData\LockItUp\recovery.json`
+- State: `C:\ProgramData\\brake\\state.json`
+- Machine key: `C:\ProgramData\\brake\\state.key`
+- Recovery token hash: `C:\ProgramData\\brake\\recovery.json`
 - Lockout/probation records
 - Logs
 
@@ -27,4 +27,4 @@ Brake captures the screen in memory to run detection. Screenshots are discarded 
 
 ## Recovery Code
 
-The emergency recovery code is shown once. Only an Argon2 hash is stored locally. The plaintext code is not recoverable from Brake after the dialog closes.
+The emergency recovery code is shown once. Only an Argon2 hash is stored locally. The plaintext code is not recoverable from brake after the dialog closes.

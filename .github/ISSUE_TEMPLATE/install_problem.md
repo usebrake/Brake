@@ -19,4 +19,4 @@ labels: install
 
 ## Logs
 
-Attach relevant log lines from `C:\ProgramData\LockItUp\logs\` if present.
+Attach relevant log lines from `C:\ProgramData\\brake\\logs\` if present.

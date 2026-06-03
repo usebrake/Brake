@@ -6,21 +6,7 @@ It watches the screen locally, detects explicit content, and triggers commitment
 
 ## Screenshots
 
-### Protection Overview
-
-![Brake overview, protection enabled](docs/screenshots/overview-enabled.png)
-
-### Detection Sensitivity
-
-![Brake advanced detection sensitivity settings](docs/screenshots/advanced.png)
-
-### Lockout Screen
-
-![Brake lockout countdown screen](docs/screenshots/lockout.png)
-
-### Local Response Rules
-
-![Brake explanation dialog](docs/screenshots/how-lockitup-works.png)
+Screenshots are being refreshed for the new Brake UI.
 
 ## Current Status
 
@@ -28,7 +14,7 @@ This is a **source beta**.
 
 For now, Brake is distributed from GitHub as source code. It is easier than a normal Python project because the install script sets up the Windows services and creates a Start Menu shortcut, but it is still not a polished one-click installer.
 
-Do not download random `.exe` files claiming to be Brake. There is no official public installer yet.
+Do not download random `.exe` files claiming to be brake. There is no official public installer yet.
 
 ## Why Trust It?
 
@@ -110,7 +96,7 @@ Open the GUI without a terminal:
 Or open it manually for development:
 
 ```powershell
-python -m lockitup.gui
+python -m brake.gui
 ```
 
 Uninstall:
@@ -132,8 +118,8 @@ After uninstall, the Windows services, Start Menu shortcut, and local Brake data
 Test mode compresses timers and skips real shutdown:
 
 ```cmd
-set LOCKITUP_TEST_MODE=1
-python -m lockitup.agent
+set BRAKE_TEST_MODE=1
+python -m brake.agent
 ```
 
 Use it to test the detection -> lockout -> shutdown/probation path without losing your session.
@@ -157,7 +143,7 @@ Important: this project currently uses PyQt6. Do not publish a proprietary/sourc
 After install, the GUI is only the control panel. The background service and agent do the actual screen watching.
 
 - Closing the GUI does not stop protection.
-- Pressing Ctrl+C in a terminal that launched `python -m lockitup.gui` only closes the GUI.
+- Pressing Ctrl+C in a terminal that launched `python -m brake.gui` only closes the GUI.
 - Killing the GUI process only closes the GUI.
 - If the agent process is killed, the Windows service should start it again.
 - If both Brake Windows services are stopped by an administrator, background protection stops until the services are started again or Windows restarts.
