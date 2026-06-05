@@ -2,7 +2,15 @@
 
 ## Brake is not in the Start Menu
 
-Run installer\install.bat again from the folder that contains it.
+Windows search can take a moment to index new shortcuts. Try opening Brake directly:
+
+```text
+C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Brake.lnk
+C:\Users\<you>\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Brake.lnk
+C:\Program Files\Brake\start-brake.vbs
+```
+
+If those files are missing, run installer\install.bat again from the folder that contains it.
 
 The installed app should be here:
 

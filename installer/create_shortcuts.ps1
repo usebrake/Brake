@@ -48,29 +48,53 @@ function Resolve-GuiTarget {
 }
 
 $target = Resolve-GuiTarget
-$shortcutDir = Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\Brake"
-$shortcutPath = Join-Path $shortcutDir "Brake.lnk"
-$legacyShortcutPath = Join-Path $shortcutDir "brake.lnk"
+$allUsersPrograms = Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs"
+$currentUserPrograms = Join-Path $env:AppData "Microsoft\Windows\Start Menu\Programs"
+$shortcutDirs = @(
+    $allUsersPrograms,
+    (Join-Path $allUsersPrograms "Brake"),
+    $currentUserPrograms,
+    (Join-Path $currentUserPrograms "Brake")
+) | Where-Object { $_ }
 $iconPath = Join-Path $RepoRoot "desktop\src\assets\brake-ring.ico"
 if (-not (Test-Path $iconPath)) {
     $iconPath = Join-Path $RepoRoot "brake\gui\assets\brake.ico"
 }
 
-New-Item -ItemType Directory -Force -Path $shortcutDir | Out-Null
-if (Test-Path $legacyShortcutPath) {
-    Remove-Item -LiteralPath $legacyShortcutPath -Force
-}
-
 $shell = New-Object -ComObject WScript.Shell
-$shortcut = $shell.CreateShortcut($shortcutPath)
-$shortcut.TargetPath = $target.Target
-$shortcut.Arguments = $target.Args
-$shortcut.WorkingDirectory = $RepoRoot
-$shortcut.Description = "Open Brake"
-if (Test-Path $iconPath) {
-    $shortcut.IconLocation = $iconPath
-}
-$shortcut.Save()
+$created = @()
 
-Write-Host "Created Start Menu shortcut: $shortcutPath"
+foreach ($shortcutDir in $shortcutDirs) {
+    try {
+        New-Item -ItemType Directory -Force -Path $shortcutDir | Out-Null
+
+        $shortcutPath = Join-Path $shortcutDir "Brake.lnk"
+        $legacyShortcutPath = Join-Path $shortcutDir "brake.lnk"
+        if (Test-Path $legacyShortcutPath) {
+            Remove-Item -LiteralPath $legacyShortcutPath -Force
+        }
+
+        $shortcut = $shell.CreateShortcut($shortcutPath)
+        $shortcut.TargetPath = $target.Target
+        $shortcut.Arguments = $target.Args
+        $shortcut.WorkingDirectory = $RepoRoot
+        $shortcut.Description = "Open Brake"
+        if (Test-Path $iconPath) {
+            $shortcut.IconLocation = $iconPath
+        }
+        $shortcut.Save()
+        $created += $shortcutPath
+    } catch {
+        Write-Warning "Could not create shortcut in $shortcutDir`: $_"
+    }
+}
+
+if ($created.Count -eq 0) {
+    throw "Could not create any Start Menu shortcuts."
+}
+
+Write-Host "Created Start Menu shortcuts:"
+foreach ($path in $created) {
+    Write-Host "  $path"
+}
 Write-Host "Shortcut target: $($target.Target) $($target.Args)"

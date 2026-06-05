@@ -237,6 +237,26 @@ try {
 }
 
 Write-Host ""
-Write-Host "Done. Open Brake from the Windows Start Menu."
+Write-Host "Done. Open Brake from the Windows Start Menu by searching for 'Brake'."
 Write-Host "Installed app folder: $repoRoot"
+Write-Host "If Windows search does not show it immediately, open:"
+Write-Host "  $env:ProgramData\Microsoft\Windows\Start Menu\Programs\Brake.lnk"
+Write-Host "  $repoRoot\start-brake.vbs"
 Write-Host "Logs: $env:ProgramData\Brake\logs\"
+
+$openNow = Read-Host "Open Brake now? [Y/n]"
+if ($openNow -notmatch "^(n|no)$") {
+    $vbsLauncher = Join-Path $repoRoot "start-brake.vbs"
+    $batLauncher = Join-Path $repoRoot "start-brake-dev.bat"
+    try {
+        if (Test-Path $vbsLauncher) {
+            Start-Process -FilePath (Join-Path $env:SystemRoot "System32\wscript.exe") -ArgumentList "`"$vbsLauncher`"" -WorkingDirectory $repoRoot
+        } elseif (Test-Path $batLauncher) {
+            Start-Process -FilePath $batLauncher -WorkingDirectory $repoRoot
+        } else {
+            Write-Warning "Could not find a Brake launcher in $repoRoot."
+        }
+    } catch {
+        Write-Warning "Could not open Brake automatically: $_"
+    }
+}

@@ -25,7 +25,8 @@ When installing Python, check Add python.exe to PATH.
 7. Double-click installer\install.bat.
 8. Approve the Windows admin prompt.
 9. Wait for the script to finish.
-10. Open Brake from the Windows Start Menu.
+10. When it asks `Open Brake now?`, press Enter to open it or type `n` to skip.
+11. Later, open Brake from the Windows Start Menu by searching for `Brake`.
 
 The installer copies Brake to:
 
@@ -39,7 +40,15 @@ After install, you can delete the downloaded ZIP/extracted folder. Do not delete
 
 ## If Brake is not in the Start Menu
 
-Run installer\install.bat again from the extracted Brake source folder.
+Windows search can take a moment to notice new shortcuts. First try these:
+
+```text
+C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Brake.lnk
+C:\Users\<you>\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Brake.lnk
+C:\Program Files\Brake\start-brake.vbs
+```
+
+If none of those exist, run installer\install.bat again from the extracted Brake source folder.
 
 If that fails, run:
 

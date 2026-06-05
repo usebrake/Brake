@@ -62,9 +62,12 @@ Short version:
 5. Open the folder that contains `installer\install.bat`.
 6. Double-click `installer\install.bat`.
 7. Approve the Windows admin prompt.
-8. Open Brake from the Windows Start Menu.
+8. At the end of install, choose whether to open Brake now.
+9. Later, open Brake from the Windows Start Menu by searching for `Brake`.
 
 After install, the downloaded ZIP/extracted folder is no longer the app. Brake runs from `C:\Program Files\Brake`, so you can delete the downloaded folder.
+
+If Windows search does not show Brake immediately, open `C:\Program Files\Brake\start-brake.vbs` or run the Start Menu shortcut at `C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Brake.lnk`.
 
 ## User Guide
 
