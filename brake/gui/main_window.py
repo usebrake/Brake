@@ -36,6 +36,7 @@ from brake.gui.controller import Controller
 from brake.gui.password_dialog import ask_password
 from brake.gui.recovery_dialog import RecoveryDialog
 from brake.gui.set_password_dialog import ask_new_password
+from brake.state.first_run import ensure_first_run_state
 from brake.state.recovery import RecoveryStore
 from brake.state.schema import LOCKOUT_DURATION_MAX, LOCKOUT_DURATION_MIN, SENSITIVITY_RANK
 
@@ -709,6 +710,7 @@ class MainWindow(QMainWindow):
         if store.exists():
             return
         try:
+            ensure_first_run_state()
             token = store.generate()
         except Exception as e:
             QMessageBox.warning(

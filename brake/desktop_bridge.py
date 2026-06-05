@@ -19,6 +19,7 @@ from brake.lockout.recovery import spawn_resume_lockout_if_needed
 from brake.runtime import lockout_command
 from brake.state import State
 from brake.state.crypto import hash_password
+from brake.state.first_run import ensure_first_run_state
 from brake.state.recovery import RecoveryStore
 
 DEV_PASSWORD = "brake-dev-password"
@@ -112,6 +113,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.cmd == "status":
             payload = _ok(_status_payload(controller))
         elif args.cmd == "ensure-recovery":
+            ensure_first_run_state(controller.store)
             store = RecoveryStore()
             if store.exists():
                 payload = _ok({"hasRecovery": True, "token": None})
