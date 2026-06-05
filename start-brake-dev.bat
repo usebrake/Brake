@@ -40,17 +40,21 @@ if exist "%ROOT%.brake-source-install" (
     pause
     exit /b 1
   )
+  set "ELECTRON_EXE=%CD%\node_modules\electron\dist\electron.exe"
+  if not exist "!ELECTRON_EXE!" (
+    echo Brake desktop runtime is missing.
+    echo Run installer\install.bat again from the Brake source folder.
+    echo [%date% %time%] Missing !ELECTRON_EXE!. Run installer\install.bat again.>> "%LOGFILE%"
+    pause
+    exit /b 1
+  )
   set "BRAKE_INSTALLED_SOURCE=1"
   set "BRAKE_NO_DEV_AGENT=1"
   set "BRAKE_DATA_DIR=%ProgramData%\Brake"
   echo Starting Brake...
   echo [%date% %time%] Starting Brake from %ROOT%.> "%LOGFILE%"
-  npm run start >> "%LOGFILE%" 2>&1
-  set "EXITCODE=!ERRORLEVEL!"
-  if not "!EXITCODE!"=="0" (
-    echo [%date% %time%] Brake exited with error !EXITCODE!.>> "%LOGFILE%"
-  )
-  exit /b !EXITCODE!
+  start "Brake" "!ELECTRON_EXE!" .
+  exit /b 0
 )
 
 if not exist "node_modules" (
