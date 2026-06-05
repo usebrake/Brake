@@ -111,11 +111,12 @@ def test_deletion_bypass_refused(tmp: Path) -> None:
 
     state = State(password_hash=crypto_mod.hash_password("pw"), enabled=True)
     store.save(state)
+    assert (tmp / "state.initialized").exists()
     (tmp / "state.json").unlink()
     try:
         store.load()
     except StateMissingError:
-        print("  [ok] deletion-bypass refused (state.key still present)")
+        print("  [ok] deletion-bypass refused (initialized marker still present)")
         return
     raise AssertionError("Deletion bypass was not detected!")
 

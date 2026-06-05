@@ -42,7 +42,22 @@ def test_first_run_state_created_before_recovery(tmp: Path) -> None:
     print("  [ok] first-run state exists before recovery generation")
 
 
-def test_first_run_refuses_key_without_state(tmp: Path) -> None:
+def test_first_run_allows_precreated_key_without_state(tmp: Path) -> None:
+    os.environ["BRAKE_DATA_DIR"] = str(_clean(tmp))
+    _reset_modules()
+
+    from brake.state.crypto import load_or_create_hmac_key
+    from brake.state.first_run import ensure_first_run_state
+    from brake.state.store import StateStore
+
+    store = StateStore()
+    load_or_create_hmac_key(store.key_path)
+    assert ensure_first_run_state(store) is True
+    assert store.exists()
+    print("  [ok] precreated key still allows first-run bootstrap")
+
+
+def test_first_run_refuses_initialized_marker_without_state(tmp: Path) -> None:
     os.environ["BRAKE_DATA_DIR"] = str(_clean(tmp))
     _reset_modules()
 
@@ -52,10 +67,11 @@ def test_first_run_refuses_key_without_state(tmp: Path) -> None:
 
     store = StateStore()
     load_or_create_hmac_key(store.key_path)
+    store.initialized_path.write_text("1", encoding="utf-8")
     try:
         ensure_first_run_state(store)
     except StateMissingError:
-        print("  [ok] key-without-state still refuses first-run bootstrap")
+        print("  [ok] initialized marker without state refuses bootstrap")
         return
     raise AssertionError("expected StateMissingError")
 
@@ -63,4 +79,5 @@ def test_first_run_refuses_key_without_state(tmp: Path) -> None:
 if __name__ == "__main__":
     base = Path(os.environ.get("TMP", ".")) / "brake-first-run-tests"
     test_first_run_state_created_before_recovery(base / "a")
-    test_first_run_refuses_key_without_state(base / "b")
+    test_first_run_allows_precreated_key_without_state(base / "b")
+    test_first_run_refuses_initialized_marker_without_state(base / "c")

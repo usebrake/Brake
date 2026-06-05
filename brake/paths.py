@@ -32,6 +32,10 @@ def state_file() -> Path:
     return data_dir() / "state.json"
 
 
+def state_initialized_file() -> Path:
+    return data_dir() / "state.initialized"
+
+
 def key_file() -> Path:
     return data_dir() / "state.key"
 

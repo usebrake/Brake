@@ -47,18 +47,19 @@ class StateStore:
     def __init__(self, state_path: Optional[Path] = None, key_path: Optional[Path] = None) -> None:
         self.state_path = state_path or paths.state_file()
         self.key_path = key_path or paths.key_file()
+        self.initialized_path = self.state_path.with_name("state.initialized")
 
     def exists(self) -> bool:
         return self.state_path.exists()
 
     def check_no_deletion_bypass(self) -> None:
-        """Raise if state.json was deleted while state.key is still there."""
-        if not self.state_path.exists() and self.key_path.exists():
+        """Raise if state.json was deleted after it had existed."""
+        if not self.state_path.exists() and self.initialized_path.exists():
             raise StateMissingError(
-                "state.json is missing but state.key is present. "
+                "state.json is missing but Brake was already initialized. "
                 "This usually means state.json was deleted to bypass protection. "
-                "Refusing to re-run first-run setup. To fully reset, delete BOTH "
-                f"{self.state_path} and {self.key_path}."
+                "Refusing to re-run first-run setup. To fully reset, delete "
+                f"{self.state_path}, {self.key_path}, and {self.initialized_path}."
             )
 
     def load(self) -> Optional[State]:
@@ -104,6 +105,7 @@ class StateStore:
                     if attempt == 4:
                         raise
                     time.sleep(0.05)
+            self.initialized_path.write_text("1", encoding="utf-8")
         finally:
             try:
                 if tmp.exists():
