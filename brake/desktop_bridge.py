@@ -107,7 +107,11 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         args = parser.parse_args(argv)
-        controller = Controller()
+        dev_mode = bool(os.environ.get("BRAKE_DESKTOP_DEV"))
+        controller = Controller(
+            allow_direct_writes=dev_mode,
+            ipc_timeout_ms=2000,
+        )
         _ensure_dev_state(controller)
 
         if args.cmd == "status":

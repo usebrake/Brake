@@ -35,9 +35,10 @@ _PROBE_CACHE_SECONDS = 2.0  # how long to trust a previous ping() result
 
 
 class Controller:
-    def __init__(self) -> None:
+    def __init__(self, *, allow_direct_writes: bool = True, ipc_timeout_ms: int = 400) -> None:
         self.store = StateStore()
-        self.ipc = IPCClient(timeout_ms=400)
+        self.ipc = IPCClient(timeout_ms=ipc_timeout_ms)
+        self.allow_direct_writes = bool(allow_direct_writes)
         self._ipc_up: Optional[bool] = None
         self._ipc_checked_at: float = 0.0
 
@@ -52,6 +53,11 @@ class Controller:
 
     def _invalidate(self) -> None:
         self._ipc_up = None
+
+    def _direct_write_unavailable(self) -> Tuple[bool, str]:
+        if self.allow_direct_writes:
+            return True, ""
+        return False, "service_unavailable"
 
     # ---- reads ----
 
@@ -111,6 +117,9 @@ class Controller:
                 return bool(r.get("ok")), r.get("error", "")
             except IPCError:
                 self._invalidate()
+        ok, err = self._direct_write_unavailable()
+        if not ok:
+            return False, err
         s = self._load_state()
         if s is None: return False, "not_initialized"
         if len(new_password) < MIN_PASSWORD_LENGTH:
@@ -128,6 +137,9 @@ class Controller:
                 return bool(r.get("ok")), err
             except IPCError:
                 self._invalidate()
+        ok, err = self._direct_write_unavailable()
+        if not ok:
+            return False, err
         s = self._load_state()
         if s is None: return False, "not_initialized"
         # Backdoor bypasses commitment too (current dev preference).
@@ -159,6 +171,9 @@ class Controller:
                 return bool(r.get("ok")), r.get("error", "")
             except IPCError:
                 self._invalidate()
+        ok, err = self._direct_write_unavailable()
+        if not ok:
+            return False, err
         s = self._load_state()
         if s is None:
             return False, "not_initialized"
@@ -180,6 +195,9 @@ class Controller:
                 return bool(r.get("ok")), r.get("error", "")
             except IPCError:
                 self._invalidate()
+        ok, err = self._direct_write_unavailable()
+        if not ok:
+            return False, err
         s = self._load_state()
         if s is None: return False, "not_initialized"
         if s.commitment_active() and int(minutes) < s.lockout_duration_minutes:
@@ -195,6 +213,9 @@ class Controller:
                 return bool(r.get("ok")), r.get("error", "")
             except IPCError:
                 self._invalidate()
+        ok, err = self._direct_write_unavailable()
+        if not ok:
+            return False, err
         s = self._load_state()
         if s is None: return False, "not_initialized"
         if not verify_password(s.password_hash, password):
@@ -234,6 +255,9 @@ class Controller:
         value = str(value or "").strip().lower()
         if value not in DETECTION_SENSITIVITIES:
             return False, "invalid_sensitivity"
+        ok, err = self._direct_write_unavailable()
+        if not ok:
+            return False, err
         s = self._load_state()
         if s is None:
             return False, "not_initialized"
@@ -254,6 +278,9 @@ class Controller:
                 return bool(r.get("ok")), r.get("error", "")
             except IPCError:
                 self._invalidate()
+        ok, err = self._direct_write_unavailable()
+        if not ok:
+            return False, err
         s = self._load_state()
         if s is None:
             return False, "not_initialized"
@@ -279,6 +306,9 @@ class Controller:
         value = str(value or "").strip().lower()
         if value not in ANIME_DETECTION_MODES:
             return False, "invalid_anime_mode"
+        ok, err = self._direct_write_unavailable()
+        if not ok:
+            return False, err
         s = self._load_state()
         if s is None:
             return False, "not_initialized"
