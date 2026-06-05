@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import sys
 
-from brake.watchdog.watchdog_service import brakeWatchdog
+from brake.watchdog.watchdog_service import BrakeWatchdog
 
 
 def main() -> int:
