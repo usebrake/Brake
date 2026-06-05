@@ -42,3 +42,6 @@ Design Elements/
 .vscode/
 .idea/
 *.swp
+
+# Local downloaded GitHub ZIP copies
+BrakeFromGithub/

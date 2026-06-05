@@ -126,7 +126,7 @@ function StatusPanel({ status, now }) {
         {commitmentLeft ? <p className="status-meta">{commitmentLeft}</p> : null}
         {recoveryLeft ? <p className="status-meta">{recoveryLeft}</p> : null}
       </div>
-      <Badge state={state}>{recoveryLeft ? recoveryLeft : committed ? commitmentLeft || "Locked in" : enabled ? "Active" : "Idle"}</Badge>
+      <Badge state={state}>{recoveryLeft ? recoveryLeft : committed ? "Locked in" : enabled ? "Active" : "Idle"}</Badge>
     </section>
   );
 }
@@ -1001,12 +1001,12 @@ export default function App() {
                   title="Commitment"
                   description={
                     status.commitmentActive
-                      ? `Protection is locked. ${formatCommitmentLeft(status.committedUntil, now)}.`
+                      ? "Protection is locked until the commitment ends."
                       : "Lock protection in so your password cannot turn it off early."
                   }
                   aside={
                     <button className={`pill-action ${status.commitmentActive ? "active" : ""}`} onClick={toggleCommitment}>
-                      {status.commitmentActive ? formatCommitmentLeft(status.committedUntil, now) || "Locked in" : "No commitment set"}
+                      {status.commitmentActive ? "Locked in" : "No commitment set"}
                     </button>
                   }
                 />

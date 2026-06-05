@@ -12,7 +12,7 @@ Screenshots are being refreshed for the new Brake UI.
 
 This is a **source beta**.
 
-For now, Brake is distributed from GitHub as source code. It is easier than a normal Python project because the install script sets up the Windows services and creates a Start Menu shortcut, but it is still not a polished one-click installer.
+For now, Brake is distributed from GitHub as source code. It includes a development launcher, but it is still not a polished one-click installer.
 
 Do not download random `.exe` files claiming to be brake. There is no official public installer yet.
 
@@ -49,25 +49,27 @@ Brake is a friction tool, not magic.
 - False positives and missed detections are possible.
 - The beta may be rough around setup, recovery, service behavior, and detection tuning.
 
-## Install From GitHub ZIP
+## Run From GitHub ZIP
+
+Brake is not a one-click installer yet. The GitHub ZIP is a source download.
 
 Before you start:
 
 - Install **Python 3.11+ x64** from python.org.
 - During Python install, check **Add python.exe to PATH**.
+- Install **Node.js LTS** from nodejs.org.
 - Install the **Microsoft Visual C++ Redistributable 2015-2022** if it is not already installed.
 
-Then install Brake:
+Then run Brake:
 
 1. Click **Code** on GitHub.
 2. Click **Download ZIP**.
 3. Extract the ZIP somewhere normal, such as your Desktop.
-4. Open the extracted folder.
-5. Double-click `installer\install.bat`.
-6. Approve the Windows admin prompt.
-7. Open **Brake** from the Windows Start Menu.
+4. Open the extracted folder. It may contain a nested folder named `brake-main`.
+5. Open the folder that contains `start-brake-dev.bat`.
+6. Double-click `start-brake-dev.bat`.
 
-The install script sets up the background services and creates the Start Menu app shortcut. You should not need to open the GUI from Command Prompt after install.
+The launcher installs desktop dependencies the first time, then starts Brake. Leave the command window open while Brake is running. If it fails, the window stays open so you can copy the error.
 
 ## Developer Install
 
@@ -89,14 +91,10 @@ Install the Windows services from an elevated terminal:
 .\installer\install.bat
 ```
 
-Open the GUI without a terminal:
-
-- Start Menu -> Brake
-
-Or open it manually for development:
+Open Brake for development:
 
 ```powershell
-python -m brake.gui
+.\start-brake-dev.bat
 ```
 
 Uninstall:
@@ -143,7 +141,7 @@ Important: this project currently uses PyQt6. Do not publish a proprietary/sourc
 After install, the GUI is only the control panel. The background service and agent do the actual screen watching.
 
 - Closing the GUI does not stop protection.
-- Pressing Ctrl+C in a terminal that launched `python -m brake.gui` only closes the GUI.
+- Pressing Ctrl+C in the development launcher stops the source-mode desktop app and its dev agent.
 - Killing the GUI process only closes the GUI.
 - If the agent process is killed, the Windows service should start it again.
 - If both Brake Windows services are stopped by an administrator, background protection stops until the services are started again or Windows restarts.
