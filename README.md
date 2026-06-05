@@ -49,9 +49,9 @@ Brake is a friction tool, not magic.
 - False positives and missed detections are possible.
 - The beta may be rough around setup, recovery, service behavior, and detection tuning.
 
-## Run From GitHub ZIP
+## Install From GitHub ZIP
 
-Brake is not a one-click installer yet. The GitHub ZIP is a source download.
+Brake is not a polished one-click installer yet, but the GitHub ZIP can still create the Start Menu app shortcut.
 
 Before you start:
 
@@ -60,16 +60,20 @@ Before you start:
 - Install **Node.js LTS** from nodejs.org.
 - Install the **Microsoft Visual C++ Redistributable 2015-2022** if it is not already installed.
 
-Then run Brake:
+Then install Brake:
 
 1. Click **Code** on GitHub.
 2. Click **Download ZIP**.
 3. Extract the ZIP somewhere normal, such as your Desktop.
 4. Open the extracted folder. It may contain a nested folder named `brake-main`.
-5. Open the folder that contains `start-brake-dev.bat`.
-6. Double-click `start-brake-dev.bat`.
+5. Open the folder that contains `installer\install.bat`.
+6. Double-click `installer\install.bat`.
+7. Approve the Windows admin prompt.
+8. Open **Brake** from the Windows Start Menu.
 
-The launcher installs desktop dependencies the first time, then starts Brake. Leave the command window open while Brake is running. If it fails, the window stays open so you can copy the error.
+The install script sets up the background services and creates the Start Menu shortcut. In the current source beta, that shortcut opens the Electron development launcher. It installs desktop dependencies the first time, then starts Brake.
+
+If the Start Menu shortcut does not appear, open the same folder and double-click `start-brake-dev.bat`.
 
 ## Developer Install
 

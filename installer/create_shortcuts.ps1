@@ -14,6 +14,14 @@ function Resolve-GuiTarget {
         }
     }
 
+    $sourceLauncher = Join-Path $RepoRoot "start-brake-dev.bat"
+    if (Test-Path $sourceLauncher) {
+        return @{
+            Target = (Resolve-Path $sourceLauncher).Path
+            Args = ""
+        }
+    }
+
     if (-not $PythonPath) {
         $cmd = Get-Command python -ErrorAction Stop
         $PythonPath = $cmd.Path
@@ -33,13 +41,16 @@ function Resolve-GuiTarget {
 
 $target = Resolve-GuiTarget
 $shortcutDir = Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\Brake"
-$shortcutPath = Join-Path $shortcutDir "brake.lnk"
-$legacyShortcutDir = Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\\Brake"
-$iconPath = Join-Path $RepoRoot "brake\\gui\assets\brake.ico"
+$shortcutPath = Join-Path $shortcutDir "Brake.lnk"
+$legacyShortcutPath = Join-Path $shortcutDir "brake.lnk"
+$iconPath = Join-Path $RepoRoot "desktop\src\assets\brake-ring.ico"
+if (-not (Test-Path $iconPath)) {
+    $iconPath = Join-Path $RepoRoot "brake\gui\assets\brake.ico"
+}
 
 New-Item -ItemType Directory -Force -Path $shortcutDir | Out-Null
-if (Test-Path $legacyShortcutDir) {
-    Remove-Item -LiteralPath $legacyShortcutDir -Recurse -Force
+if (Test-Path $legacyShortcutPath) {
+    Remove-Item -LiteralPath $legacyShortcutPath -Force
 }
 
 $shell = New-Object -ComObject WScript.Shell
@@ -54,3 +65,4 @@ if (Test-Path $iconPath) {
 $shortcut.Save()
 
 Write-Host "Created Start Menu shortcut: $shortcutPath"
+Write-Host "Shortcut target: $($target.Target) $($target.Args)"
