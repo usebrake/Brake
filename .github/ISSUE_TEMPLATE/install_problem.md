@@ -1,22 +1,31 @@
 ---
 name: Install problem
-about: Installer, service, or startup issue
+about: Brake did not install, launch, or create the expected shortcut
 title: "[Install]: "
 labels: install
 ---
 
-## What step failed?
+# Install problem
 
-- [ ] Installer would not run
-- [ ] Service did not start
-- [ ] GUI did not open
-- [ ] Agent did not run
-- [ ] Uninstall failed
+## What happened?
 
-## Windows version
+Describe the exact step that failed.
 
-## Error message
+## What did you try?
 
-## Logs
+- [ ] Downloaded ZIP from GitHub
+- [ ] Extracted the ZIP
+- [ ] Opened the folder containing installer\install.bat
+- [ ] Ran installer\install.bat as administrator
+- [ ] Tried opening Brake from Start Menu
+- [ ] Tried start-brake-dev.bat
 
-Attach relevant log lines from `C:\ProgramData\\brake\\logs\` if present.
+## Diagnostics
+
+Paste the output of:
+
+```powershell
+.\scripts\doctor.ps1
+```
+
+Do not include passwords or recovery codes.

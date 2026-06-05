@@ -9,8 +9,25 @@ $watchdogExe = Join-Path $repoRoot "BrakeWatchdog.exe"
 $frozenInstall = (Test-Path $serviceExe) -and (Test-Path $watchdogExe)
 
 if (-not $frozenInstall) {
-    $python = (Get-Command python).Path
-    if (-not $python) { throw "python.exe not found in PATH" }
+    $pythonCommand = Get-Command python -ErrorAction SilentlyContinue
+    if (-not $pythonCommand) {
+        throw "Python was not found in PATH. Install Python 3.11+ x64 and check 'Add python.exe to PATH', then run installer\install.bat again."
+    }
+    $python = $pythonCommand.Path
+
+    $nodeCommand = Get-Command node -ErrorAction SilentlyContinue
+    if (-not $nodeCommand) {
+        throw "Node.js was not found in PATH. Install Node.js LTS from nodejs.org, close this terminal, then run installer\install.bat again."
+    }
+
+    $npmCommand = Get-Command npm -ErrorAction SilentlyContinue
+    if (-not $npmCommand) {
+        throw "npm was not found in PATH. Install Node.js LTS from nodejs.org, close this terminal, then run installer\install.bat again."
+    }
+
+    if (-not (Test-Path (Join-Path $repoRoot "desktop\package.json"))) {
+        throw "desktop\package.json was not found. Make sure you are running installer\install.bat from the extracted Brake source folder."
+    }
 } else {
     $python = $null
 }
@@ -114,5 +131,6 @@ try {
 }
 
 Write-Host ""
-Write-Host "Done. Verify with: sc query BrakeService"
+Write-Host "Done. Open Brake from the Windows Start Menu."
+Write-Host "Verify services with: sc query BrakeService"
 Write-Host "Logs: $env:ProgramData\\brake\\logs\"

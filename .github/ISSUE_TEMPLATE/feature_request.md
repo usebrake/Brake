@@ -1,12 +1,20 @@
 ---
 name: Feature request
-about: Suggest an improvement
+about: Suggest an improvement to Brake
 title: "[Feature]: "
 labels: enhancement
 ---
 
+# Feature request
+
 ## What problem would this solve?
 
-## What would you like Brake to do?
+Describe the user problem, not just the feature.
 
-## Is this related to quitting/accountability, installation, detection, or UI?
+## Suggested behavior
+
+What should Brake do?
+
+## Tradeoffs
+
+Could this increase false positives, make setup harder, or weaken commitment?

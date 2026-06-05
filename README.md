@@ -1,20 +1,18 @@
 # Brake
 
-Brake is a free source-available Windows beta for local screen accountability.
+**Private by default. Firm when it counts.**
 
-It watches the screen locally, detects explicit content, and triggers commitment-style lockouts. The code is public so people can inspect what it does, but this is **not open source** and not a polished consumer release yet. See [LICENSE](LICENSE).
+Brake is a free source-available Windows beta for local screen accountability. It checks your screen locally, detects explicit content, and triggers lockouts designed to interrupt the session before it becomes automatic.
 
-## Screenshots
-
-Screenshots are being refreshed for the new Brake UI.
+The code is public so people can inspect what it does. Brake is **not open source** and not a polished consumer release yet. See [LICENSE](LICENSE).
 
 ## Current Status
 
-This is a **source beta**.
+Brake is a **source beta**.
 
-For now, Brake is distributed from GitHub as source code. It includes a development launcher, but it is still not a polished one-click installer.
+There is no official public one-click installer yet. Do not download random `.exe` files claiming to be Brake.
 
-Do not download random `.exe` files claiming to be brake. There is no official public installer yet.
+The current GitHub version installs from source, creates a Start Menu shortcut, and runs an Electron desktop app backed by Python services.
 
 ## Why Trust It?
 
@@ -22,133 +20,97 @@ Do not download random `.exe` files claiming to be brake. There is no official p
 - No cloud account.
 - No telemetry.
 - No screenshots saved.
-- Detection logs contain only labels, confidence values, and timing/debug data.
-- The source is public so people can inspect the privacy and security behavior.
+- No screenshots uploaded.
+- Detection logs contain labels, confidence values, and timing/debug data only.
+- The source is public for privacy and security review.
 
-## What It Does
+## Screenshots
 
-- Detects photographic nudity with NudeNet.
-- Detects illustrated/anime NSFW content with a HuggingFace image classifier when optional dependencies are installed.
-- Uses three sensitivity modes for partial nudity:
-  - Light ignores partial nudity.
-  - Balanced gives a short warning pause with cooldown.
-  - Strict requires two matching scans, then uses escalating warning pauses.
-- Hard explicit content triggers the full lockout path in every mode.
-- Partial nudity never causes shutdown.
-- Can shut down Windows after a hard lockout.
-- Runs a short strict-watch window after reboot.
-- Supports Commitment Mode so normal password disable is blocked until a chosen time.
-- Provides a per-install emergency recovery code shown once.
+Screenshots are being refreshed for the new Brake UI.
+
+## What Brake Does
+
+- Detects real photo/video explicit content with NudeNet.
+- Optionally detects illustrated/anime NSFW content with a separate local model.
+- Offers Light, Balanced, and Strict sensitivity.
+- Treats clear explicit content as a full lockout.
+- Treats incidental nudity more carefully to reduce false positives.
+- Shuts down Windows after a full lockout.
+- Runs a five-minute strict-watch window after restart.
+- Supports Commitment Mode so your password cannot turn protection off early.
+- Shows a per-install recovery code once on first launch.
 
 ## Honest Limits
 
-Brake is a friction tool, not magic.
+Brake adds friction. It is not magic.
 
-- A determined Windows admin can eventually bypass local software.
-- Safe Mode, booting another OS, and using another device are outside the current protection model.
+- A determined Windows administrator can eventually bypass local software.
+- Safe Mode, another operating system, another device, or deleting source files are outside the current beta protection model.
 - False positives and missed detections are possible.
-- The beta may be rough around setup, recovery, service behavior, and detection tuning.
+- Source installs are still rougher than a packaged app.
 
-## Install From GitHub ZIP
+## Install
 
-Brake is not a polished one-click installer yet, but the GitHub ZIP can still create the Start Menu app shortcut.
+Read the simple install guide first: [docs/INSTALL.md](docs/INSTALL.md).
 
-Before you start:
+Short version:
 
-- Install **Python 3.11+ x64** from python.org.
-- During Python install, check **Add python.exe to PATH**.
-- Install **Node.js LTS** from nodejs.org.
-- Install the **Microsoft Visual C++ Redistributable 2015-2022** if it is not already installed.
-
-Then install Brake:
-
-1. Click **Code** on GitHub.
-2. Click **Download ZIP**.
-3. Extract the ZIP somewhere normal, such as your Desktop.
-4. Open the extracted folder. It may contain a nested folder named `brake-main`.
+1. Install Python 3.11+ x64.
+2. Install Node.js LTS.
+3. Download this repo as a ZIP from GitHub.
+4. Extract it.
 5. Open the folder that contains `installer\install.bat`.
 6. Double-click `installer\install.bat`.
 7. Approve the Windows admin prompt.
-8. Open **Brake** from the Windows Start Menu.
+8. Open Brake from the Windows Start Menu.
 
-The install script sets up the background services and creates the Start Menu shortcut. In the current source beta, that shortcut opens the Electron development launcher. It installs desktop dependencies the first time, then starts Brake.
+If the Start Menu shortcut does not appear, double-click `start-brake-dev.bat` from the Brake folder.
 
-If the Start Menu shortcut does not appear, open the same folder and double-click `start-brake-dev.bat`.
+Do not move or delete the extracted Brake folder after installing. Source installs still depend on that folder.
 
-## Developer Install
+## User Guide
 
-Requirements:
+Start here: [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
 
-- Windows 10/11 x64
-- Python 3.11+ x64
-- Visual C++ Redistributable 2015-2022
+Helpful docs:
 
-Install dependencies:
-
-```powershell
-pip install -r requirements.txt
-```
-
-Install the Windows services from an elevated terminal:
-
-```powershell
-.\installer\install.bat
-```
-
-Open Brake for development:
-
-```powershell
-.\start-brake-dev.bat
-```
-
-Uninstall:
-
-```powershell
-.\installer\uninstall.bat
-```
-
-The uninstaller is free only when protection is disabled and Commitment Mode is not active.
-
-If protection is enabled without an active commitment, uninstall requires the normal password. The emergency recovery code starts a 10-minute cooldown first.
-
-During an active commitment, uninstall cannot happen immediately. The emergency recovery code starts the 10-minute cooldown; after protection turns off, uninstall can continue. The normal password is not enough, because Commitment Mode is meant to prevent ordinary password disable.
-
-After uninstall, the Windows services, Start Menu shortcut, and local Brake data are removed. You can then delete the extracted source/app folder.
-
-## Test Mode
-
-Test mode compresses timers and skips real shutdown:
-
-```cmd
-set BRAKE_TEST_MODE=1
-python -m brake.agent
-```
-
-Use it to test the detection -> lockout -> shutdown/probation path without losing your session.
+- [Install](docs/INSTALL.md)
+- [Uninstall](docs/UNINSTALL.md)
+- [Recovery code](docs/RECOVERY_CODE.md)
+- [Troubleshooting](docs/TROUBLESHOOTING.md)
+- [FAQ](docs/FAQ.md)
 
 ## Recovery Code
 
-On first GUI launch, Brake generates a unique emergency recovery code and shows it once.
+Brake shows a recovery code once on first launch.
 
-The recovery code can reset your password immediately. It can also start a 10-minute emergency cooldown to turn Brake off on that machine, including during Commitment Mode.
+The recovery code can reset your password immediately. It can also start a 10-minute emergency cooldown before Brake turns protection off, including during Commitment Mode.
 
-Do not save it somewhere easy to reach on the same computer. Write it down, take a photo on your phone, or give it to someone you trust. If you want the strongest commitment, you can choose not to copy it, but then a forgotten password may require a full reset.
+Do not store it somewhere easy to reach on the same computer if you want strong commitment. Write it down, take a photo on your phone, or give it to someone you trust.
 
-## Packaging Status
+## What Happens If The App Closes?
 
-Packaging scripts exist under `packaging/`, but packaging is experimental and not the current public launch path.
+After install, the desktop app is the control panel. The background services and agent do the screen checking.
 
-Important: this project currently uses PyQt6. Do not publish a proprietary/source-available installer until the PyQt6 commercial/GPL licensing question is resolved or the GUI is ported to a suitable alternative such as PySide6.
-
-## What Happens If The GUI Closes?
-
-After install, the GUI is only the control panel. The background service and agent do the actual screen watching.
-
-- Closing the GUI does not stop protection.
-- Pressing Ctrl+C in the development launcher stops the source-mode desktop app and its dev agent.
-- Killing the GUI process only closes the GUI.
-- If the agent process is killed, the Windows service should start it again.
+- Closing the app window does not stop protection.
+- Killing only the GUI closes only the GUI.
+- If the agent process is killed, the Windows service should restart it.
 - If both Brake Windows services are stopped by an administrator, background protection stops until the services are started again or Windows restarts.
+- In source development mode, pressing Ctrl+C in the launcher can stop the dev desktop process.
+
+## Diagnostics
+
+Run:
+
+```powershell
+.\scripts\doctor.ps1
+```
+
+For source install checks:
+
+```powershell
+.\scripts\check_source_install.ps1
+```
 
 ## Development Tests
 
@@ -161,15 +123,16 @@ python -m tests.test_sensitivity
 python -m tests.test_uninstall_guard
 ```
 
+Desktop build:
+
+```powershell
+cd desktop
+npm run build
+```
+
 ## Feedback Wanted
 
-Please use the GitHub issue templates for:
-
-- install problems
-- false positives
-- missed detections
-- confusing recovery/commitment behavior
-- bugs
+Please use the GitHub issue templates for install problems, false positives, missed detections, recovery/commitment confusion, and bugs.
 
 Do not attach explicit screenshots, passwords, or recovery codes.
 

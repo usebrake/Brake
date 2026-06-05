@@ -1,25 +1,32 @@
 ---
 name: Bug report
-about: Something broke or behaved incorrectly
+about: Brake broke or behaved incorrectly
 title: "[Bug]: "
 labels: bug
 ---
 
+# Bug report
+
 ## What happened?
 
-## What did you expect?
+Describe the bug clearly.
 
-## Windows version
+## Expected behavior
 
-## Brake version
+What did you expect Brake to do?
 
-## Installed from
+## Steps to reproduce
 
-- [ ] Source
-- [ ] Experimental local package/build
+1.
+2.
+3.
 
-## Logs
+## Diagnostics
 
-Attach relevant log lines from `C:\ProgramData\\brake\\logs\`.
+Paste relevant output from:
 
-Do not attach screenshots of explicit content, passwords, or recovery codes.
+```powershell
+.\scripts\doctor.ps1
+```
+
+Do not include passwords, recovery codes, or explicit screenshots.

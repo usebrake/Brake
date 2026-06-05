@@ -1,22 +1,32 @@
 ---
 name: False positive
-about: Brake triggered on content that should not have triggered
+about: Brake responded to content that should not have triggered
 title: "[False positive]: "
 labels: false-positive
 ---
 
-## What content type triggered?
+# False positive
 
-- [ ] Normal website/app
-- [ ] Movie/TV scene
-- [ ] Fitness/fashion/swimwear
-- [ ] Art/illustration
-- [ ] Other
+## What was on screen?
 
-## What happened?
+Describe the content without attaching explicit or private screenshots.
 
-## Was it a warning or hard lockout?
+## Brake response
 
-## Relevant log lines
+- [ ] Warning pause
+- [ ] Full lockout
+- [ ] Shutdown after lockout
 
-Paste detector labels/confidence if available. Do not attach private or explicit screenshots.
+## Sensitivity
+
+- [ ] Light
+- [ ] Balanced
+- [ ] Strict
+
+## Context
+
+Was this a movie, TV show, game, trailer, image, browser page, or something else?
+
+## Logs
+
+If available, paste detector labels/confidence values. Remove private information first.

@@ -113,15 +113,15 @@ function StatusPanel({ status, now }) {
       </div>
       <div className="status-copy">
         <div className="eyebrow">{recoveryLeft ? "RECOVERY COOLDOWN" : committed ? "COMMITTED" : enabled ? "PROTECTED" : "OFF"}</div>
-        <h2>{recoveryLeft ? "Emergency unlock pending" : committed ? "Commitment active" : enabled ? "You're covered" : "Protection is off"}</h2>
+        <h2>{recoveryLeft ? "Emergency unlock pending" : committed ? "Commitment active" : enabled ? "Protection is active" : "Protection is off"}</h2>
         <p>
           {recoveryLeft
-            ? "Recovery code accepted. Brake will turn protection off after the cooldown."
+            ? "Recovery accepted. Brake will turn protection off after the cooldown."
             : committed
-            ? "Password cannot turn protection off until the commitment ends."
+            ? "Your commitment is active. Password disable is unavailable until it ends."
             : enabled
-              ? "Brake is watching your screen. Local only."
-              : "Brake is not watching right now."}
+              ? "Screen checks are active. Nothing leaves this device."
+              : "Screen checks are off."}
         </p>
         {commitmentLeft ? <p className="status-meta">{commitmentLeft}</p> : null}
         {recoveryLeft ? <p className="status-meta">{recoveryLeft}</p> : null}
@@ -185,7 +185,7 @@ function Modal({ title, children, onClose }) {
           </span>
           <div>
             <h2>{title}</h2>
-            <p>Local screen accountability with calm friction.</p>
+            <p>Local accountability for explicit content.</p>
           </div>
           <button className="icon-button" aria-label="Close" onClick={onClose}>
             <X size={18} />
@@ -220,15 +220,14 @@ function PasswordModal({ mode, durationMinutes, commitmentActive, error, onCance
       <form className="password-form" onSubmit={submit}>
         <p>
           {enabling
-            ? "You'll set a new password for this session. Past passwords no longer work."
+            ? "Set the password used to turn protection off. This replaces any previous password on this device."
             : commitmentActive
-              ? "Commitment is active. Your regular password cannot turn protection off right now. Entering your recovery code starts a 10-minute emergency cooldown before Brake turns off."
-              : "Enter the current password to turn protection off. If you enter your recovery code instead, Brake starts a 10-minute emergency cooldown before turning off."}
+              ? "Commitment is active. Your password cannot turn protection off right now. A recovery code starts a 10-minute emergency cooldown instead."
+              : "Enter your password to turn protection off. A recovery code can also start a 10-minute emergency cooldown."}
         </p>
         {enabling ? (
           <p>
-            Explicit content triggers a <strong>{durationMinutes}-minute</strong> lockout, then Windows shuts down.
-            After restart, a five-minute strict watch starts. Incidental nudity gets a short warning first.
+            Clear explicit content triggers a <strong>{durationMinutes}-minute</strong> lockout, then Windows shuts down. After restart, Brake watches strictly for five minutes. Incidental nudity gets a warning pause first.
           </p>
         ) : null}
         <label className="field">
@@ -293,7 +292,7 @@ function ResetPasswordModal({ error, onCancel, onSubmit }) {
     <Modal title="Reset password" onClose={onCancel}>
       <form className="password-form" onSubmit={submit}>
         <p>
-          Use your recovery code to set a new protection password. This keeps protection and any active commitment exactly as they are.
+          Use your recovery code to set a new protection password. Protection and any active commitment stay in place.
         </p>
         <label className="field">
           <span>Recovery code</span>
@@ -401,8 +400,7 @@ function CommitmentModal({ error, onCancel, onSubmit }) {
     <Modal title="Lock in a commitment" onClose={onCancel}>
       <form className="password-form" onSubmit={submit}>
         <p>
-          While a commitment is active, your password cannot turn protection off.
-          You can still make settings stricter, but not looser.
+          Choose how long Brake should stay locked in. During a commitment, your password cannot turn protection off. You can make settings stricter, but not easier to bypass.
         </p>
         <div className="inline-fields">
           <label className="field compact">
@@ -453,18 +451,16 @@ function RecoveryModal({ token, regenerated = false, onClose }) {
     <Modal title={regenerated ? "New recovery code" : "Save your recovery code"} onClose={onClose}>
       <div className="password-form">
         <p>
-          This code can reset your password immediately. It can also start a 10-minute emergency cooldown to turn Brake off if you get stuck behind a commitment.
-          You will not see this exact code again.
+          This code can reset your password immediately. It can also start a 10-minute emergency cooldown before Brake turns off. You will not see this exact code again.
         </p>
         <p>
-          Do not save it somewhere easy to reach on this computer. Write it on paper, take a photo on your phone, or give it to someone you trust.
-          If you want the strongest commitment, you can choose not to copy it, but then a forgotten password may require a full reset.
+          Do not store it somewhere easy to reach on this computer. Write it on paper, take a photo on your phone, or give it to someone you trust. For the strongest commitment, you can choose not to copy it, but a forgotten password may then require a full reset.
         </p>
         <label className="field">
           <span>Recovery code</span>
           <input readOnly value={token} onFocus={(event) => event.target.select()} />
         </label>
-        <p className="form-warning">Anyone with this code can reset your password or schedule emergency disable on this machine. Treat it like a password, but keep it away from impulse access.</p>
+        <p className="form-warning">Anyone with this code can reset your password or schedule emergency disable on this device. Treat it like a password, but keep it away from easy access.</p>
         <div className="modal-actions">
           <button className="btn secondary" type="button" onClick={copy}>
             {copied ? "Copied" : "Copy"}
@@ -488,56 +484,56 @@ function GuideSection({ title, children }) {
 function GuideModal({ tab, status, onClose }) {
   const duration = Number(status.lockoutDurationMinutes) || 1;
   const title = tab === "anime"
-    ? "How Anime works"
+    ? "How anime detection works"
     : tab === "detection"
-      ? "How Detection works"
-      : "How Overview works";
+      ? "How detection works"
+      : "How Brake works";
 
   return (
     <Modal title={title} onClose={onClose}>
       {tab === "overview" ? (
         <div className="guide">
           <GuideSection title="What Brake does">
-            <p>Brake watches your screen locally. Screenshots are checked on this computer and are not uploaded, saved, or sent anywhere.</p>
+            <p>Brake checks your screen locally. Screenshots are analyzed on this device and are not uploaded, saved, or sent anywhere.</p>
           </GuideSection>
           <GuideSection title="When protection is on">
-            <p>Clear explicit content triggers your full lockout. With your current setting, that lockout lasts {duration} {duration === 1 ? "minute" : "minutes"}.</p>
-            <p>When that full lockout ends, Windows shuts down. After restart, Brake starts a short strict-watch window to prevent immediately reopening the same content.</p>
+            <p>Clear explicit content triggers the full lockout. Your current lockout length is {duration} {duration === 1 ? "minute" : "minutes"}.</p>
+            <p>When the lockout ends, Windows shuts down. After restart, Brake watches strictly for five minutes so the same content cannot be reopened immediately.</p>
           </GuideSection>
           <GuideSection title="Commitment">
-            <p>A commitment locks your settings in. Your normal password cannot turn protection off until the commitment ends.</p>
-            <p>During commitment, you can make Brake stricter, but you cannot make it easier to bypass. The recovery code can reset a forgotten password, or start a 10-minute emergency cooldown before protection turns off.</p>
+            <p>A commitment locks protection in. Your password cannot turn protection off until the commitment ends.</p>
+            <p>During commitment, you can make Brake stricter, but not easier to bypass. The recovery code can reset a forgotten password or start a 10-minute emergency cooldown before protection turns off.</p>
           </GuideSection>
         </div>
       ) : tab === "detection" ? (
         <div className="guide">
           <GuideSection title="Photo and video detection">
-            <p>Detection uses the main nudity detector for real photos, videos, streams, and browser content.</p>
-            <p>Exposed genitals or anus are treated as hard explicit content. Those trigger the full lockout and shutdown flow.</p>
+            <p>The main detector checks real photos, videos, streams, and browser content.</p>
+            <p>Exposed genitals or anus are treated as hard explicit content and trigger the full lockout and shutdown flow.</p>
           </GuideSection>
           <GuideSection title="Sensitivity levels">
-            <p><strong>Light:</strong> only clear explicit content triggers. Incidental nudity is ignored as much as possible.</p>
-            <p><strong>Balanced:</strong> best default. Clear explicit content still locks. Partial nudity gets a short warning pause instead of a shutdown.</p>
-            <p><strong>Strict:</strong> more aggressive for partial nudity, but it asks for matching scans first so one random false hit is filtered out.</p>
+            <p><strong>Light:</strong> clear explicit content only. Lowest false-positive rate.</p>
+            <p><strong>Balanced:</strong> recommended default. Clear explicit content locks. Partial nudity gets a short warning pause instead of shutdown.</p>
+            <p><strong>Strict:</strong> stronger partial-nudity response. It asks for matching scans first so a single random hit is filtered out.</p>
           </GuideSection>
           <GuideSection title="Changing sensitivity">
-            <p>Making detection stricter asks for confirmation. If commitment is active, you cannot lower it again until commitment ends.</p>
+            <p>Making detection stricter asks for confirmation. During commitment, you cannot lower it again until the commitment ends.</p>
             <p>If protection is on without commitment, lowering sensitivity requires your password.</p>
           </GuideSection>
         </div>
       ) : (
         <div className="guide">
           <GuideSection title="Illustrated detection">
-            <p>Anime detection is optional because it uses a separate local model. Once downloaded, it runs on this computer only.</p>
-            <p>The model labels images as normal or NSFW. It does not identify exact body parts like the main photo detector.</p>
+            <p>Illustrated detection is optional because it uses a separate local model. Once downloaded, it runs on this device only.</p>
+            <p>The model classifies illustrated images as normal or NSFW. It does not identify exact body parts like the main photo detector.</p>
           </GuideSection>
           <GuideSection title="Anime modes">
             <p><strong>Not strict:</strong> illustrated NSFW causes a short pause only. It does not start the shutdown flow.</p>
-            <p><strong>Strict:</strong> very high-confidence illustrated NSFW can trigger the full lockout. Lower-confidence hits still use the short pause.</p>
+            <p><strong>Strict:</strong> very high-confidence illustrated NSFW can trigger the full lockout. Lower-confidence hits use the short pause.</p>
           </GuideSection>
           <GuideSection title="Locking anime settings">
-            <p>Turning anime detection on during commitment locks it on until the commitment ends.</p>
-            <p>If protection is on without commitment, turning anime detection off or lowering anime strictness requires your password.</p>
+            <p>Turning illustrated detection on during commitment locks it on until the commitment ends.</p>
+            <p>If protection is on without commitment, turning illustrated detection off or lowering strictness requires your password.</p>
           </GuideSection>
         </div>
       )}
@@ -689,7 +685,7 @@ export default function App() {
         applyBackendResponse(response);
         setPasswordPrompt(null);
         if (mode === "enable") {
-          setNotice("Protection is on.");
+          setNotice("Protection is active.");
         } else if (response.data?.recoveryUnlockPending) {
           setNotice("Recovery code accepted. Protection will turn off after the 10-minute cooldown.");
         } else {
@@ -724,7 +720,7 @@ export default function App() {
   };
   const toggleCommitment = () => {
     if (status.commitmentActive) {
-      setNotice("Commitment is active. Use Turn off protection with your recovery code for emergency override.");
+      setNotice("Commitment is active. Use your recovery code from Turn off protection for emergency override.");
       return;
     }
     setCommitmentPrompt({ error: "" });
@@ -738,7 +734,7 @@ export default function App() {
       if (response?.ok) {
         applyBackendResponse(response);
         setCommitmentPrompt(null);
-        setNotice("Commitment is locked in.");
+        setNotice("Commitment is active.");
         return;
       }
       setCommitmentPrompt((current) => ({
@@ -807,7 +803,7 @@ export default function App() {
           kind: "sensitivity",
           value: detectionSensitivity,
           title: "Lower detection sensitivity",
-          body: "Protection is on. Enter your password to make detection less strict.",
+          body: "Protection is on. Enter your password to lower detection sensitivity.",
           error: ""
         });
         return;
@@ -817,7 +813,7 @@ export default function App() {
     }
     setConfirmPrompt({
       title: "Make detection stricter?",
-      body: "This raises how strongly Brake responds to possible explicit content.",
+      body: "This makes Brake respond more strongly to possible explicit content.",
       warning: status.commitmentActive ? "Because commitment is active, you will not be able to lower it again until the commitment ends." : "",
       confirmLabel: "Make stricter",
       onConfirm: () => {
@@ -829,7 +825,7 @@ export default function App() {
   const installAnimeDetector = () => {
     setAnimeInstalling(true);
     setStatus((current) => ({ ...current, animeModelStatus: "installing" }));
-    setNotice("Downloading illustrated detector. This can take a few minutes the first time.");
+    setNotice("Downloading illustrated detector. This can take a few minutes on first setup.");
     window.brake?.downloadAnime?.().then((response) => {
       setAnimeInstalling(false);
       if (!response?.ok) {
@@ -840,7 +836,7 @@ export default function App() {
       }
       const modelStatus = response.data?.animeModelStatus || "ready";
       setStatus((current) => ({ ...current, animeModelStatus: modelStatus }));
-      setNotice(modelStatus === "ready" ? "Illustrated detector installed." : animeStatusCopy(modelStatus));
+      setNotice(modelStatus === "ready" ? "Illustrated detector is ready." : animeStatusCopy(modelStatus));
     });
   };
   const applyAnimeEnabled = (enabled, password = "") => {
@@ -920,7 +916,7 @@ export default function App() {
           kind: "anime-mode",
           value: animeDetectionMode,
           title: "Lower anime strictness",
-          body: "Protection is on. Enter your password to make illustrated detection less strict.",
+          body: "Protection is on. Enter your password to lower illustrated detection strictness.",
           error: ""
         });
         return;
@@ -969,7 +965,7 @@ export default function App() {
           <BrakeMark tone={protectedTone} />
           <div>
             <div className="brand-name">Brake</div>
-            <div className="brand-subtitle">Quietly running. Local only.</div>
+            <div className="brand-subtitle">Private by default. Firm when it counts.</div>
           </div>
         </div>
       </header>
@@ -991,18 +987,18 @@ export default function App() {
           <>
             <div className="page-head">
               <h1>Overview</h1>
-              <p>Brake runs quietly on your computer and steps in only when it needs to.</p>
+              <p>Brake checks locally and steps in when explicit content appears.</p>
               {notice ? <p className="notice">{notice}</p> : null}
             </div>
             <StatusPanel status={status} now={now} />
             <div className="overview-single">
-              <Card icon={Clock} title="Session controls" subtitle="Set the friction Brake uses when protection is running.">
+              <Card icon={Clock} title="Session controls" subtitle="Choose what happens when protection is running.">
                 <SettingRow
                   title="Commitment"
                   description={
                     status.commitmentActive
                       ? "Protection is locked until the commitment ends."
-                      : "Lock protection in so your password cannot turn it off early."
+                      : "Lock protection in for a set time so your password cannot turn it off early."
                   }
                   aside={
                     <button className={`pill-action ${status.commitmentActive ? "active" : ""}`} onClick={toggleCommitment}>
@@ -1012,7 +1008,7 @@ export default function App() {
                 />
                 <SettingRow
                   title="Lockout length"
-                  description="How long Brake keeps the screen locked after explicit content is detected."
+                  description="How long the screen stays locked after clear explicit content is detected."
                   aside={
                     <div className="stepper-control">
                       <button aria-label="Decrease lockout length" onClick={() => changeDuration(-1)}>
@@ -1044,10 +1040,10 @@ export default function App() {
           <>
             <div className="page-head">
               <h1>Detection</h1>
-              <p>Tune how sensitive Brake is and test the lockout without changing the engine.</p>
+              <p>Choose how strongly Brake responds to nudity and explicit content.</p>
               {notice ? <p className="notice">{notice}</p> : null}
             </div>
-            <Card icon={Activity} title="Sensitivity" subtitle="How readily Brake treats screen content as explicit.">
+            <Card icon={Activity} title="Sensitivity" subtitle="Select the default balance between missed detections and false positives.">
               <SensitivityOption
                 title="Light"
                 active={status.detectionSensitivity === "light"}
@@ -1059,7 +1055,7 @@ export default function App() {
               <SensitivityOption
                 title="Balanced"
                 active={status.detectionSensitivity === "balanced"}
-                description="Best for most people. Gives incidental nudity a short warning pause first."
+                description="Recommended for most people. Incidental nudity gets a short warning pause first."
                 disabled={status.commitmentActive && SENSITIVITY_RANK.balanced < SENSITIVITY_RANK[status.detectionSensitivity]}
                 note={status.commitmentActive && SENSITIVITY_RANK.balanced < SENSITIVITY_RANK[status.detectionSensitivity] ? "Locked by commitment" : ""}
                 onClick={() => requestSensitivity("balanced")}
@@ -1067,7 +1063,7 @@ export default function App() {
               <SensitivityOption
                 title="Strict"
                 active={status.detectionSensitivity === "strict"}
-                description="Requires two matching scans, then uses warning pauses that grow if it keeps happening."
+                description="Stronger response for partial nudity, with matching scans to reduce random false hits."
                 onClick={() => requestSensitivity("strict")}
               />
               <div className="card-actions">
@@ -1081,18 +1077,18 @@ export default function App() {
           <>
             <div className="page-head">
               <h1>Anime</h1>
-              <p>Optional local detection for illustrated explicit content.</p>
+              <p>Optional local checks for illustrated explicit content.</p>
               {notice ? <p className="notice">{notice}</p> : null}
             </div>
-            <Card icon={Activity} title="Illustrated detector" subtitle="A separate model for anime, hentai, drawings, and renders.">
+            <Card icon={Activity} title="Illustrated detector" subtitle="A separate local model for anime, drawings, and rendered explicit content.">
               <SettingRow
                 title="Model"
-                description="Downloads once to this computer. It runs locally and does not upload screenshots."
+                description="Downloads once to this device. It runs locally and does not upload screenshots."
                 aside={<Badge state={status.animeModelStatus === "ready" ? "protected" : ""}>{animeStatusCopy(status.animeModelStatus)}</Badge>}
               />
               <SettingRow
                 title="Anime detection"
-                description="When enabled, illustrated hits are treated as context detections. They can pause or warn, but they do not trigger shutdown by themselves."
+                description="When enabled, illustrated hits can pause or warn. Shutdown only happens in strict mode on very high-confidence explicit hits."
                 aside={
                   <button
                     className={`pill-action ${status.animeDetectionEnabled ? "active" : ""}`}
@@ -1106,7 +1102,7 @@ export default function App() {
               <SensitivityOption
                 title="Not strict"
                 active={status.animeDetectionMode === "standard"}
-                description="Any illustrated NSFW hit gets a short pause only. No shutdown path from anime detection."
+                description="Illustrated NSFW gets a short pause only. No shutdown path."
                 disabled={status.commitmentActive && status.animeDetectionMode === "strict"}
                 note={status.commitmentActive && status.animeDetectionMode === "strict" ? "Locked by commitment" : ""}
                 onClick={() => requestAnimeMode("standard")}
@@ -1114,7 +1110,7 @@ export default function App() {
               <SensitivityOption
                 title="Strict"
                 active={status.animeDetectionMode === "strict"}
-                description="Very high-confidence illustrated explicit hits can trigger the full lockout. Lower-confidence hits still get a short pause."
+                description="Very high-confidence illustrated explicit hits can trigger a full lockout. Lower-confidence hits get a short pause."
                 onClick={() => requestAnimeMode("strict")}
               />
               <div className="card-actions">
@@ -1140,7 +1136,7 @@ export default function App() {
           {status.commitmentActive ? "Commitment active" : "Lock in commitment"}
         </Button>
         <div className="spacer" />
-        <button className="link-button" onClick={() => setShowInfo(true)}>How this tab works</button>
+        <button className="link-button" onClick={() => setShowInfo(true)}>How this works</button>
       </footer>
 
       {showInfo ? (
