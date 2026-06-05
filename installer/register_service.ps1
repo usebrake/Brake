@@ -61,6 +61,33 @@ function Stop-BrakeUserProcesses {
     }
 }
 
+function Ensure-ElectronRuntime {
+    param([string]$DesktopRoot)
+
+    $electronExe = Join-Path $DesktopRoot "node_modules\electron\dist\electron.exe"
+    if (Test-Path $electronExe) {
+        return
+    }
+
+    Write-Host "Preparing Electron runtime..."
+    $electronInstall = Join-Path $DesktopRoot "node_modules\electron\install.js"
+    if (-not (Test-Path $electronInstall)) {
+        throw "Electron install script was not found. Run npm install again."
+    }
+
+    Push-Location $DesktopRoot
+    try {
+        & node.exe $electronInstall
+        if ($LASTEXITCODE -ne 0) { throw "Electron runtime install returned $LASTEXITCODE" }
+    } finally {
+        Pop-Location
+    }
+
+    if (-not (Test-Path $electronExe)) {
+        throw "Electron runtime is still missing after install: $electronExe"
+    }
+}
+
 function Copy-SourceInstall {
     if (-not (Test-Path (Join-Path $repoRoot "desktop\package.json"))) {
         throw "desktop\package.json was not found. Run installer\install.bat from the extracted Brake source folder."
@@ -163,6 +190,7 @@ if (-not $frozenInstall) {
     try {
         & npm.cmd install
         if ($LASTEXITCODE -ne 0) { throw "npm install returned $LASTEXITCODE" }
+        Ensure-ElectronRuntime -DesktopRoot (Get-Location).Path
         & npm.cmd run build
         if ($LASTEXITCODE -ne 0) { throw "npm run build returned $LASTEXITCODE" }
     } finally {

@@ -36,6 +36,12 @@ Then run:
 
 Copy the output into a GitHub install issue.
 
+If the Start Menu shortcut opens nothing, check:
+
+```text
+C:\ProgramData\Brake\logs\desktop-launch.log
+```
+
 ## The app opens but protection does not work
 
 Run installer\install.bat as administrator again. The background services need to be installed and running.
