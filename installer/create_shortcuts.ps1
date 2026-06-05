@@ -14,6 +14,14 @@ function Resolve-GuiTarget {
         }
     }
 
+    $sourceVbs = Join-Path $RepoRoot "start-brake.vbs"
+    if (Test-Path $sourceVbs) {
+        return @{
+            Target = (Join-Path $env:SystemRoot "System32\wscript.exe")
+            Args = "`"$((Resolve-Path $sourceVbs).Path)`""
+        }
+    }
+
     $sourceLauncher = Join-Path $RepoRoot "start-brake-dev.bat"
     if (Test-Path $sourceLauncher) {
         return @{

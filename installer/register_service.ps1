@@ -1,12 +1,110 @@
+param(
+    [switch]$SkipCopy
+)
+
 # Register the Brake Windows services. Must be elevated.
-# Usage (from elevated PowerShell):
-#   powershell -ExecutionPolicy Bypass -File register_service.ps1
+# Usage:
+#   installer\install.bat
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
+$installRoot = Join-Path $env:ProgramFiles "Brake"
 $serviceExe = Join-Path $repoRoot "BrakeService.exe"
 $watchdogExe = Join-Path $repoRoot "BrakeWatchdog.exe"
 $frozenInstall = (Test-Path $serviceExe) -and (Test-Path $watchdogExe)
+
+function Same-Path($a, $b) {
+    try {
+        $ra = (Resolve-Path $a -ErrorAction Stop).Path.TrimEnd('\')
+    } catch {
+        $ra = [System.IO.Path]::GetFullPath($a).TrimEnd('\')
+    }
+    try {
+        $rb = (Resolve-Path $b -ErrorAction Stop).Path.TrimEnd('\')
+    } catch {
+        $rb = [System.IO.Path]::GetFullPath($b).TrimEnd('\')
+    }
+    return [string]::Equals($ra, $rb, [StringComparison]::OrdinalIgnoreCase)
+}
+
+function Stop-IfRunning($svcName) {
+    & sc.exe query $svcName *> $null
+    if ($LASTEXITCODE -ne 0) { return }
+
+    Write-Host "Stopping $svcName if it is running..."
+    & sc.exe stop $svcName *> $null
+}
+
+function Stop-BrakeUserProcesses {
+    try {
+        $processes = Get-CimInstance Win32_Process |
+            Where-Object {
+                $_.Name -in @("python.exe", "pythonw.exe", "electron.exe", "node.exe", "brake.exe", "BrakeAgent.exe", "BrakeLockout.exe")
+            }
+    } catch {
+        Write-Warning "Could not enumerate user processes: $_"
+        return
+    }
+
+    foreach ($proc in $processes) {
+        if ($proc.ProcessId -eq $PID) { continue }
+        $cmd = [string]$proc.CommandLine
+        $exe = [string]$proc.ExecutablePath
+        $isBrake =
+            ($cmd.IndexOf("brake.", [StringComparison]::OrdinalIgnoreCase) -ge 0) -or
+            ($cmd.IndexOf($installRoot, [StringComparison]::OrdinalIgnoreCase) -ge 0) -or
+            ($exe.IndexOf($installRoot, [StringComparison]::OrdinalIgnoreCase) -ge 0)
+
+        if ($isBrake) {
+            Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+function Copy-SourceInstall {
+    if (-not (Test-Path (Join-Path $repoRoot "desktop\package.json"))) {
+        throw "desktop\package.json was not found. Run installer\install.bat from the extracted Brake source folder."
+    }
+
+    Write-Host "Installing Brake source beta to: $installRoot"
+    Write-Host "After install, you can delete the downloaded ZIP/extracted source folder."
+
+    Stop-IfRunning "BrakeWatchdog"
+    Stop-IfRunning "BrakeService"
+    Stop-BrakeUserProcesses
+    Start-Sleep -Seconds 1
+
+    New-Item -ItemType Directory -Force -Path $installRoot | Out-Null
+
+    $excludeDirs = @(
+        ".git",
+        ".brake-electron-dev-data",
+        ".brake-dev-data",
+        ".brake-recovery-test-data",
+        ".claude",
+        "__pycache__",
+        "BrakeFromGithub",
+        "Design Elements",
+        "desktop\node_modules",
+        "desktop\dist"
+    )
+    $excludeFiles = @("*.pyc", "*.pyo")
+
+    & robocopy.exe $repoRoot $installRoot /MIR /XD $excludeDirs /XF $excludeFiles /R:2 /W:1 /NFL /NDL /NP
+    $copyCode = $LASTEXITCODE
+    if ($copyCode -gt 7) {
+        throw "robocopy failed with exit code $copyCode"
+    }
+
+    New-Item -ItemType File -Force -Path (Join-Path $installRoot ".brake-source-install") | Out-Null
+    $installedRegister = Join-Path $installRoot "installer\register_service.ps1"
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installedRegister -SkipCopy
+    exit $LASTEXITCODE
+}
+
+if (-not $frozenInstall -and -not $SkipCopy -and -not (Same-Path $repoRoot $installRoot)) {
+    Copy-SourceInstall
+}
 
 if (-not $frozenInstall) {
     $pythonCommand = Get-Command python -ErrorAction SilentlyContinue
@@ -36,15 +134,8 @@ Write-Host "Repo: $repoRoot"
 if ($frozenInstall) {
     Write-Host "Mode: bundled executable install"
 } else {
+    Write-Host "Mode: source beta installed app"
     Write-Host "Python: $python"
-}
-
-function Stop-IfRunning($svcName) {
-    & sc.exe query $svcName *> $null
-    if ($LASTEXITCODE -ne 0) { return }
-
-    Write-Host "Stopping $svcName if it is running..."
-    & sc.exe stop $svcName *> $null
 }
 
 Stop-IfRunning "BrakeWatchdog"
@@ -52,9 +143,6 @@ Stop-IfRunning "BrakeService"
 Start-Sleep -Seconds 2
 
 if (-not $frozenInstall) {
-    # Services run as LocalSystem, so they cannot import packages installed in the
-    # current user's AppData\Roaming site-packages. Install dependencies into the
-    # machine Python while this script is elevated.
     Write-Host ""
     Write-Host "Installing Python dependencies into the system interpreter..."
     & $python -s -m pip install --upgrade --no-user -r (Join-Path $repoRoot "requirements.txt")
@@ -69,8 +157,18 @@ if (-not $frozenInstall) {
         }
     }
 
-    # Make `import brake` discoverable for the SCM-launched service process.
-    # Machine env is read by services on each start, so setting it here is enough.
+    Write-Host ""
+    Write-Host "Installing and building the Brake desktop app..."
+    Push-Location (Join-Path $repoRoot "desktop")
+    try {
+        & npm.cmd install
+        if ($LASTEXITCODE -ne 0) { throw "npm install returned $LASTEXITCODE" }
+        & npm.cmd run build
+        if ($LASTEXITCODE -ne 0) { throw "npm run build returned $LASTEXITCODE" }
+    } finally {
+        Pop-Location
+    }
+
     [Environment]::SetEnvironmentVariable("PYTHONPATH", $repoRoot, "Machine")
     $env:PYTHONPATH = $repoRoot
     Write-Host "Set machine PYTHONPATH = $repoRoot"
@@ -112,6 +210,14 @@ Configure-Failure "BrakeService"
 Configure-Failure "BrakeWatchdog"
 
 Write-Host ""
+Write-Host "Applying installed-file permissions..."
+try {
+    & (Join-Path $PSScriptRoot "set_acls.ps1") -InstallRoot $repoRoot
+} catch {
+    Write-Warning "Could not harden installed app files: $_"
+}
+
+Write-Host ""
 Write-Host "Starting services..."
 & sc.exe start BrakeService    | Out-Null
 & sc.exe start BrakeWatchdog   | Out-Null
@@ -132,5 +238,5 @@ try {
 
 Write-Host ""
 Write-Host "Done. Open Brake from the Windows Start Menu."
-Write-Host "Verify services with: sc query BrakeService"
-Write-Host "Logs: $env:ProgramData\\brake\\logs\"
+Write-Host "Installed app folder: $repoRoot"
+Write-Host "Logs: $env:ProgramData\Brake\logs\"

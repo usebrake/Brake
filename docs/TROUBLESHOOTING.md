@@ -4,7 +4,17 @@
 
 Run installer\install.bat again from the folder that contains it.
 
-If it still does not appear, double-click start-brake-dev.bat from the Brake folder.
+The installed app should be here:
+
+```text
+C:\Program Files\Brake
+```
+
+## The downloaded folder was deleted
+
+That is okay after install. Brake runs from `C:\Program Files\Brake`.
+
+If `C:\Program Files\Brake` was deleted, reinstall from the GitHub ZIP.
 
 ## start-brake-dev.bat does not work
 

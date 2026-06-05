@@ -1,17 +1,25 @@
 # Brake Electron App
 
-This is the current user-facing Brake app.
+This is the current user-facing Brake desktop app.
 
 The app is split into two parts:
 
 - `desktop/` is the Electron + React control panel.
-- `brake/` is the Python backend package name for now. It owns detection, state, lockouts, recovery, commitment, and the local agent.
+- `brake/` is the Python backend package. It owns detection, state, lockouts, recovery, commitment, services, and the local agent.
 
-The internal Python package name has not been renamed yet because keeping it stable avoids breaking the backend while the product is being finalized.
+## Installed Source Mode
 
-## Run Locally
+The GitHub source-beta installer copies the app to:
 
-From this folder:
+```text
+C:\Program Files\Brake
+```
+
+During install, it runs `npm install` and `npm run build`. The Start Menu shortcut then runs Electron against the built `desktop/dist` UI. It does not need the Vite dev server for normal installed use.
+
+## Development Mode
+
+From the repo root:
 
 ```powershell
 .\start-brake-dev.bat
@@ -24,8 +32,8 @@ cd desktop
 npm run dev
 ```
 
-In dev mode, Electron stores local state in `.brake-electron-dev-data/` inside this folder. That keeps it separate from installed/production state.
+In development mode, Electron stores local state in `.brake-electron-dev-data/` inside the repo. That keeps it separate from installed state.
 
 ## Current Scope
 
-Electron is the primary GUI now. The older PyQt files are still present as a legacy/reference layer while the backend migration settles, but they are not the UI direction for brake.
+Electron is the primary GUI. The older PyQt files are still present as a legacy/reference layer while Electron is tested, but they are not the UI direction for Brake.

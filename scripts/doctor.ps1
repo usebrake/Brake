@@ -3,23 +3,29 @@
 
 $ErrorActionPreference = "Continue"
 $RepoRoot = Split-Path -Parent $PSScriptRoot
+$InstallRoot = Join-Path $env:ProgramFiles "Brake"
 $Problems = 0
 
-function Result($Name, $Ok, $Detail = "") {
+function Result($Name, $Ok, $Detail = "", $Hint = "") {
     if ($Ok) {
         Write-Host "[OK]   $Name $Detail" -ForegroundColor Green
     } else {
         Write-Host "[WARN] $Name $Detail" -ForegroundColor Yellow
+        if ($Hint) { Write-Host "       $Hint" -ForegroundColor DarkYellow }
         $script:Problems += 1
     }
+}
+
+function Info($Message) {
+    Write-Host "[INFO] $Message"
 }
 
 function Command-Version($Command, $Args) {
     $cmd = Get-Command $Command -ErrorAction SilentlyContinue
     if (-not $cmd) { return $null }
     try {
-        $exe = if ($Command -eq "npm") { "npm.cmd" } else { $Command }
-        $line = & $exe @Args 2>&1 | Select-Object -First 1
+        $commandLine = "$Command $($Args -join ' ')"
+        $line = & cmd.exe /d /c $commandLine 2>&1 | Select-Object -First 1
         if ($LASTEXITCODE -ne 0 -and -not $line) { return $null }
         return "$line"
     } catch {
@@ -27,28 +33,49 @@ function Command-Version($Command, $Args) {
     }
 }
 
+function Same-Path($a, $b) {
+    try {
+        $ra = (Resolve-Path $a -ErrorAction Stop).Path.TrimEnd('\')
+    } catch {
+        $ra = [System.IO.Path]::GetFullPath($a).TrimEnd('\')
+    }
+    try {
+        $rb = (Resolve-Path $b -ErrorAction Stop).Path.TrimEnd('\')
+    } catch {
+        $rb = [System.IO.Path]::GetFullPath($b).TrimEnd('\')
+    }
+    return [string]::Equals($ra, $rb, [StringComparison]::OrdinalIgnoreCase)
+}
+
 Write-Host "Brake diagnostics"
-Write-Host "Repo: $RepoRoot"
+Write-Host "Current folder: $RepoRoot"
+Write-Host "Installed app folder: $InstallRoot"
 Write-Host ""
 
-Result "Repo folder" (Test-Path (Join-Path $RepoRoot "brake\desktop_bridge.py"))
-Result "Desktop app" (Test-Path (Join-Path $RepoRoot "desktop\package.json"))
-Result "Source launcher" (Test-Path (Join-Path $RepoRoot "start-brake-dev.bat"))
-Result "Installer" (Test-Path (Join-Path $RepoRoot "installer\install.bat"))
+if (Same-Path $RepoRoot $InstallRoot) {
+    Info "This script is running from the installed app folder."
+} else {
+    Info "This script is running from a source/download folder. The installed app should live in Program Files after install."
+}
+
+Result "Source files present" (Test-Path (Join-Path $RepoRoot "brake\desktop_bridge.py"))
+Result "Desktop app present" (Test-Path (Join-Path $RepoRoot "desktop\package.json"))
+Result "Installer present" (Test-Path (Join-Path $RepoRoot "installer\install.bat"))
+Result "Installed app folder" (Test-Path $InstallRoot) $InstallRoot "Run installer\install.bat to create it."
 
 $py = Command-Version "python" @("--version")
-Result "Python" ($null -ne $py) $py
+Result "Python" ($null -ne $py) $py "Install Python 3.11+ x64 and check Add python.exe to PATH."
 
 $node = Command-Version "node" @("--version")
-Result "Node.js" ($null -ne $node) $node
+Result "Node.js" ($null -ne $node) $node "Install Node.js LTS from nodejs.org."
 
 $npm = Command-Version "npm" @("--version")
-Result "npm" ($null -ne $npm) $npm
+Result "npm" ($null -ne $npm) $npm "Node.js LTS should install npm."
 
 if ($py) {
     try {
         $import = & python -c "import brake, sys; print(brake.__file__)" 2>$null
-        Result "Python can import brake" ($LASTEXITCODE -eq 0) $import
+        Result "Python can import brake" ($LASTEXITCODE -eq 0) $import "If this fails after install, rerun installer\install.bat."
     } catch {
         Result "Python can import brake" $false $_.Exception.Message
     }
@@ -56,31 +83,39 @@ if ($py) {
 
 $shortcutMachine = Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\Brake\Brake.lnk"
 $shortcutUser = Join-Path $env:AppData "Microsoft\Windows\Start Menu\Programs\Brake\Brake.lnk"
-Result "Start Menu shortcut" ((Test-Path $shortcutMachine) -or (Test-Path $shortcutUser))
+Result "Start Menu shortcut" ((Test-Path $shortcutMachine) -or (Test-Path $shortcutUser)) "" "Run installer\install.bat. This is expected after uninstall."
 
 foreach ($svc in @("BrakeService", "BrakeWatchdog")) {
     $query = & sc.exe query $svc 2>$null
-    Result "$svc service" ($LASTEXITCODE -eq 0) (($query | Select-String "STATE" | Select-Object -First 1).Line)
+    $stateLine = ($query | Select-String "STATE" | Select-Object -First 1).Line
+    $exists = $LASTEXITCODE -eq 0
+    $running = $exists -and ($stateLine -match "RUNNING")
+    Result "$svc service exists" $exists $stateLine "Run installer\install.bat to register services."
+    if ($exists) {
+        Result "$svc service running" $running $stateLine "If installed, run installer\install.bat again to restart services."
+    }
 }
 
 $dataDir = Join-Path $env:ProgramData "Brake"
-Result "ProgramData folder" (Test-Path $dataDir) $dataDir
+Result "ProgramData folder" (Test-Path $dataDir) $dataDir "This is created after install or first launch."
 
 if (Test-Path $dataDir) {
-    Result "State file" (Test-Path (Join-Path $dataDir "state.json"))
-    Result "Recovery file" (Test-Path (Join-Path $dataDir "recovery.json"))
+    $stateExists = Test-Path (Join-Path $dataDir "state.json")
+    $recoveryExists = Test-Path (Join-Path $dataDir "recovery.json")
+    Result "State file" $stateExists "" "Normal before first setup or after uninstall."
+    Result "Recovery file" $recoveryExists "" "Normal before first setup or after uninstall."
 }
 
 $animeDir = Join-Path $dataDir "models\anime_nsfw"
 if (Test-Path $animeDir) {
     Result "Anime model folder" $true $animeDir
 } else {
-    Write-Host "[INFO] Anime model folder not present. This is normal until installed."
+    Info "Anime model folder not present. This is normal until installed from the Anime tab."
 }
 
 Write-Host ""
 if ($Problems -gt 0) {
-    Write-Host "$Problems warning(s) found. Paste this output into a GitHub issue if you need help." -ForegroundColor Yellow
+    Write-Host "$Problems warning(s) found. Some are normal after uninstall or before first setup." -ForegroundColor Yellow
     exit 1
 }
 

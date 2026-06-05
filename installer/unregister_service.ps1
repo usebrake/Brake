@@ -6,6 +6,7 @@
 # emergency recovery code is accepted.
 $ErrorActionPreference = "Continue"
 $repoRoot = Split-Path -Parent $PSScriptRoot
+$installRoot = Join-Path $env:ProgramFiles "Brake"
 $guardExe = Join-Path $repoRoot "BrakeUninstallGuard.exe"
 $serviceExe = Join-Path $repoRoot "BrakeService.exe"
 $watchdogExe = Join-Path $repoRoot "BrakeWatchdog.exe"
@@ -13,6 +14,28 @@ $dataDir = Join-Path $env:ProgramData "Brake"
 $agentPidFile = Join-Path $dataDir "agent.pid"
 $frozenInstall = (Test-Path $serviceExe) -and (Test-Path $watchdogExe)
 $python = $null
+
+function Same-Path($a, $b) {
+    try {
+        $ra = (Resolve-Path $a -ErrorAction Stop).Path.TrimEnd('\')
+    } catch {
+        $ra = [System.IO.Path]::GetFullPath($a).TrimEnd('\')
+    }
+    try {
+        $rb = (Resolve-Path $b -ErrorAction Stop).Path.TrimEnd('\')
+    } catch {
+        $rb = [System.IO.Path]::GetFullPath($b).TrimEnd('\')
+    }
+    return [string]::Equals($ra, $rb, [StringComparison]::OrdinalIgnoreCase)
+}
+
+$installedUnregister = Join-Path $installRoot "installer\unregister_service.ps1"
+if (-not (Same-Path $repoRoot $installRoot) -and (Test-Path $installedUnregister)) {
+    Write-Host "Forwarding uninstall to installed Brake app: $installRoot"
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installedUnregister
+    exit $LASTEXITCODE
+}
+
 if (-not $frozenInstall) {
     $cmd = Get-Command python -ErrorAction SilentlyContinue
     if ($cmd) { $python = $cmd.Path }
@@ -79,6 +102,8 @@ function Stop-BrakeUserProcesses {
                 $_.Name -in @(
                     "python.exe",
                     "pythonw.exe",
+                    "electron.exe",
+                    "node.exe",
                     "brake.exe",
                     "BrakeAgent.exe",
                     "BrakeLockout.exe",
@@ -98,8 +123,8 @@ function Stop-BrakeUserProcesses {
             ($cmd.IndexOf("brake.gui", [StringComparison]::OrdinalIgnoreCase) -ge 0) -or
             ($cmd.IndexOf("brake.agent", [StringComparison]::OrdinalIgnoreCase) -ge 0) -or
             ($cmd.IndexOf("brake.lockout", [StringComparison]::OrdinalIgnoreCase) -ge 0) -or
-            ($cmd.IndexOf("Brake", [StringComparison]::OrdinalIgnoreCase) -ge 0) -or
-            ($exe.IndexOf("Brake", [StringComparison]::OrdinalIgnoreCase) -ge 0)
+            ($cmd.IndexOf($repoRoot, [StringComparison]::OrdinalIgnoreCase) -ge 0) -or
+            ($exe.IndexOf($repoRoot, [StringComparison]::OrdinalIgnoreCase) -ge 0)
 
         if ($isBrake) {
             Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue
@@ -127,19 +152,15 @@ Remove-ItemProperty `
     -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" `
     -Name "Brake" `
     -ErrorAction SilentlyContinue
-Remove-ItemProperty `
-    -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" `
-    -Name "Brake" `
-    -ErrorAction SilentlyContinue
 
 Write-Host "Removing Start Menu shortcut..."
 $shortcutDirs = @(
     (Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\Brake"),
-    (Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\\Brake")
+    (Join-Path $env:AppData "Microsoft\Windows\Start Menu\Programs\Brake")
 )
 foreach ($shortcutDir in $shortcutDirs) {
     if (Test-Path $shortcutDir) {
-        Remove-Item -LiteralPath $shortcutDir -Recurse -Force
+        Remove-Item -LiteralPath $shortcutDir -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
 
@@ -149,9 +170,23 @@ if (-not (Remove-DataDir)) {
     Write-Warning "Restart Windows, then delete that folder manually."
 }
 
+$machinePythonPath = [Environment]::GetEnvironmentVariable("PYTHONPATH", "Machine")
+if ($machinePythonPath -and (Same-Path $machinePythonPath $repoRoot)) {
+    [Environment]::SetEnvironmentVariable("PYTHONPATH", $null, "Machine")
+    Write-Host "Cleared machine PYTHONPATH for Brake."
+} else {
+    Write-Host "Machine PYTHONPATH did not point only at this Brake install; leaving it unchanged."
+}
+
 Write-Host "Services and shortcut removed."
 if (-not (Test-Path $dataDir)) {
     Write-Host "Local data removed."
 }
-Write-Host "PYTHONPATH machine env not cleared (intentional for source installs)."
-Write-Host "You can now delete the Brake source/app folder if you want a full removal."
+
+if (Same-Path $repoRoot $installRoot) {
+    Write-Host "Scheduling installed app folder removal: $repoRoot"
+    $cleanup = "Start-Sleep -Seconds 2; Remove-Item -LiteralPath '$repoRoot' -Recurse -Force -ErrorAction SilentlyContinue"
+    Start-Process powershell.exe -WindowStyle Hidden -ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", $cleanup
+} else {
+    Write-Host "You can now delete the Brake source/app folder if you want a full removal."
+}

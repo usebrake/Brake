@@ -12,7 +12,7 @@ Brake is a **source beta**.
 
 There is no official public one-click installer yet. Do not download random `.exe` files claiming to be Brake.
 
-The current GitHub version installs from source, creates a Start Menu shortcut, and runs an Electron desktop app backed by Python services.
+The current GitHub version installs from source. The install script copies Brake to `C:\Program Files\Brake`, builds the desktop app, creates a Start Menu shortcut, and registers the background services.
 
 ## Why Trust It?
 
@@ -64,9 +64,7 @@ Short version:
 7. Approve the Windows admin prompt.
 8. Open Brake from the Windows Start Menu.
 
-If the Start Menu shortcut does not appear, double-click `start-brake-dev.bat` from the Brake folder.
-
-Do not move or delete the extracted Brake folder after installing. Source installs still depend on that folder.
+After install, the downloaded ZIP/extracted folder is no longer the app. Brake runs from `C:\Program Files\Brake`, so you can delete the downloaded folder.
 
 ## User Guide
 
@@ -96,7 +94,7 @@ After install, the desktop app is the control panel. The background services and
 - Killing only the GUI closes only the GUI.
 - If the agent process is killed, the Windows service should restart it.
 - If both Brake Windows services are stopped by an administrator, background protection stops until the services are started again or Windows restarts.
-- In source development mode, pressing Ctrl+C in the launcher can stop the dev desktop process.
+- In development mode, pressing Ctrl+C in the launcher can stop the development desktop process.
 
 ## Diagnostics
 

@@ -12,6 +12,12 @@ No. Brake is source-available. The code is public for trust and review, but the 
 
 Yes, by a determined Windows administrator. Brake is a friction and accountability tool, not a perfect security boundary.
 
+## Can I delete the downloaded GitHub folder?
+
+Yes, after running installer\install.bat successfully. The installed app runs from `C:\Program Files\Brake`.
+
+Do not delete `C:\Program Files\Brake` unless you are uninstalling.
+
 ## Why does hard explicit content shut down Windows?
 
 The shutdown makes the consequence harder to ignore. It breaks the session and starts a five-minute strict-watch window after restart.

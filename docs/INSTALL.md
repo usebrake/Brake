@@ -1,6 +1,6 @@
 # Install Brake From GitHub
 
-Brake is currently a source beta. That means GitHub gives you the code, and the install script sets up the app on your computer.
+Brake is currently a source beta. GitHub gives you the code, and the install script turns that source folder into an installed Windows app.
 
 There is no official one-click public installer yet.
 
@@ -27,11 +27,19 @@ When installing Python, check Add python.exe to PATH.
 9. Wait for the script to finish.
 10. Open Brake from the Windows Start Menu.
 
-On first launch, Brake may install desktop dependencies. That can take a little time.
+The installer copies Brake to:
+
+```text
+C:\Program Files\Brake
+```
+
+It also builds the desktop app, creates the Start Menu shortcut, registers the background services, and makes installed app files read-only for standard users.
+
+After install, you can delete the downloaded ZIP/extracted folder. Do not delete `C:\Program Files\Brake` unless you are uninstalling.
 
 ## If Brake is not in the Start Menu
 
-Open the extracted Brake folder and double-click start-brake-dev.bat.
+Run installer\install.bat again from the extracted Brake source folder.
 
 If that fails, run:
 
@@ -41,6 +49,12 @@ If that fails, run:
 
 Then copy the output into a GitHub install issue.
 
-## Important source beta note
+## Running without installing
 
-Do not move or delete the extracted Brake folder after installing. Source installs still depend on that folder. A packaged installer will remove this rough edge later.
+For development only, you can still run:
+
+```powershell
+.\start-brake-dev.bat
+```
+
+That uses development mode and is not the same as the installed app.

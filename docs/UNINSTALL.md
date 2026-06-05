@@ -1,16 +1,19 @@
 # Uninstall Brake
 
-Use the uninstall script. Do not delete the folder first.
+Use the uninstall script. Do not delete the installed folder first.
 
 ## Normal uninstall
 
 If protection is off and no commitment is active:
 
-1. Open the Brake folder.
+1. Open `C:\Program Files\Brake`.
 2. Double-click installer\uninstall.bat.
 3. Approve the Windows admin prompt.
 4. Wait for the script to finish.
-5. Delete the extracted Brake folder if you want a full removal.
+
+The uninstaller removes the services, Start Menu shortcut, local Brake data, and the installed app folder.
+
+You can also run installer\uninstall.bat from your original downloaded source folder. If Brake is installed, it forwards uninstall to `C:\Program Files\Brake`.
 
 ## If protection is on
 
@@ -28,4 +31,4 @@ The recovery code can start a 10-minute emergency cooldown. When the cooldown fi
 
 Close the Brake window from the tray menu, then run uninstall again.
 
-If a Python or Electron process is still holding a log file, restart Windows and run installer\uninstall.bat before opening Brake again.
+If a Python, Node, or Electron process is still holding a file, restart Windows and run installer\uninstall.bat before opening Brake again.

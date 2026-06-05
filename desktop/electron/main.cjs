@@ -2,7 +2,8 @@ const { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage } = require("electr
 const { execFile, spawn } = require("node:child_process");
 const path = require("node:path");
 
-const isDev = !app.isPackaged;
+const isSourceInstalled = process.env.BRAKE_INSTALLED_SOURCE === "1";
+const isDev = !app.isPackaged && !isSourceInstalled;
 const repoRoot = path.resolve(__dirname, "../..");
 const pythonExe = process.env.BRAKE_PYTHON || process.env.PYTHON || "python";
 let backendQueue = Promise.resolve();
@@ -73,7 +74,11 @@ function backend(command, args = [], timeoutMs = 5000) {
 function backendEnv() {
   const env = { ...process.env };
   env.PYTHONPATH = [repoRoot, process.env.PYTHONPATH].filter(Boolean).join(path.delimiter);
-  if (isDev) {
+  if (isSourceInstalled) {
+    const programData = process.env.ProgramData || "C:\\ProgramData";
+    env.BRAKE_DATA_DIR = process.env.BRAKE_DATA_DIR || path.join(programData, "Brake");
+    delete env.BRAKE_DESKTOP_DEV;
+  } else if (isDev) {
     env.BRAKE_DESKTOP_DEV = "1";
     env.BRAKE_DATA_DIR = process.env.BRAKE_DATA_DIR || path.join(repoRoot, ".brake-electron-dev-data");
   }
@@ -81,7 +86,7 @@ function backendEnv() {
 }
 
 function startDevAgent() {
-  if (!isDev || devAgent) return;
+  if (!isDev || process.env.BRAKE_NO_DEV_AGENT === "1" || devAgent) return;
   devAgent = spawn(
       pythonExe,
       ["-m", "brake.agent"],

@@ -33,9 +33,9 @@ local_state/
 .brake-recovery-test-data/
 logs/
 models/*.onnx
-C:/ProgramData/LockItUp/
+C:/ProgramData/Brake/
 
-# Raw design/reference exports (large; production assets live in lockitup/gui/assets)
+# Raw design/reference exports (large; production assets live in brake/gui/assets)
 Design Elements/
 
 # IDE

@@ -21,6 +21,27 @@ if errorlevel 1 (
 
 cd /d "%ROOT%desktop"
 
+if exist "%ROOT%.brake-source-install" (
+  if not exist "node_modules" (
+    echo Brake desktop dependencies are missing.
+    echo Run installer\install.bat again from the Brake source folder.
+    pause
+    exit /b 1
+  )
+  if not exist "dist\index.html" (
+    echo Brake desktop build is missing.
+    echo Run installer\install.bat again from the Brake source folder.
+    pause
+    exit /b 1
+  )
+  set "BRAKE_INSTALLED_SOURCE=1"
+  set "BRAKE_NO_DEV_AGENT=1"
+  set "BRAKE_DATA_DIR=%ProgramData%\Brake"
+  echo Starting Brake...
+  npm run start
+  exit /b %ERRORLEVEL%
+)
+
 if not exist "node_modules" (
   echo Installing Brake desktop dependencies. This only runs the first time.
   npm install
@@ -32,7 +53,7 @@ if not exist "node_modules" (
   )
 )
 
-echo Starting Brake...
+echo Starting Brake in development mode...
 npm run dev
 
 if errorlevel 1 (

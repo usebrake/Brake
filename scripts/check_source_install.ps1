@@ -3,6 +3,7 @@
 
 $ErrorActionPreference = "Continue"
 $RepoRoot = Split-Path -Parent $PSScriptRoot
+$InstallRoot = Join-Path $env:ProgramFiles "Brake"
 $Problems = 0
 
 function Result($Name, $Ok, $Detail = "") {
@@ -14,29 +15,35 @@ function Result($Name, $Ok, $Detail = "") {
     }
 }
 
+function Info($Message) {
+    Write-Host "[INFO] $Message"
+}
+
 Write-Host "Brake source install check"
-Write-Host "Repo: $RepoRoot"
+Write-Host "Current folder: $RepoRoot"
+Write-Host "Expected install folder: $InstallRoot"
 Write-Host ""
 
-Result "Not running from downloaded nested GitHub copy" ($RepoRoot -notmatch "BrakeFromGithub") ""
 Result "Source package present" (Test-Path (Join-Path $RepoRoot "brake\__init__.py"))
 Result "Electron package present" (Test-Path (Join-Path $RepoRoot "desktop\package.json"))
 Result "Launcher present" (Test-Path (Join-Path $RepoRoot "start-brake-dev.bat"))
 Result "Installer present" (Test-Path (Join-Path $RepoRoot "installer\install.bat"))
 Result "Uninstaller present" (Test-Path (Join-Path $RepoRoot "installer\uninstall.bat"))
 
-$nodeModules = Join-Path $RepoRoot "desktop\node_modules"
-if (Test-Path $nodeModules) {
-    Result "Desktop dependencies installed" $true
+if (Test-Path $InstallRoot) {
+    Result "Installed app folder exists" $true $InstallRoot
+    Result "Installed app marker" (Test-Path (Join-Path $InstallRoot ".brake-source-install"))
+    Result "Installed desktop build" (Test-Path (Join-Path $InstallRoot "desktop\dist\index.html"))
+    Result "Installed desktop dependencies" (Test-Path (Join-Path $InstallRoot "desktop\node_modules"))
 } else {
-    Write-Host "[INFO] Desktop dependencies are not installed yet. start-brake-dev.bat will install them on first run."
+    Info "Brake is not installed into Program Files yet. Run installer\install.bat."
 }
 
 try {
     $status = & python -m brake.desktop_bridge status 2>$null
-    Result "Backend status command" ($LASTEXITCODE -eq 0) ""
+    Result "Backend status command from current folder" ($LASTEXITCODE -eq 0) ""
 } catch {
-    Result "Backend status command" $false $_.Exception.Message
+    Result "Backend status command from current folder" $false $_.Exception.Message
 }
 
 $shortcut = Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\Brake\Brake.lnk"
@@ -45,7 +52,7 @@ if (Test-Path $shortcut) {
         $shell = New-Object -ComObject WScript.Shell
         $lnk = $shell.CreateShortcut($shortcut)
         Result "Start Menu shortcut target exists" (Test-Path $lnk.TargetPath) $lnk.TargetPath
-        Result "Start Menu shortcut points at this folder" ($lnk.WorkingDirectory -eq $RepoRoot) $lnk.WorkingDirectory
+        Result "Start Menu shortcut points to installed app" ($lnk.WorkingDirectory -eq $InstallRoot) $lnk.WorkingDirectory
     } catch {
         Result "Read Start Menu shortcut" $false $_.Exception.Message
     }
