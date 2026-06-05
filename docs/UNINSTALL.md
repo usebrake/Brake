@@ -11,7 +11,9 @@ If protection is off and no commitment is active:
 3. Approve the Windows admin prompt.
 4. Wait for the script to finish.
 
-The uninstaller removes the services, Start Menu shortcut, local Brake data, and the installed app folder.
+The uninstaller removes the services, Start Menu shortcut, local Brake data, recovery code, and the installed app folder.
+
+If uninstall cannot remove local data, it now fails loudly. Do not reinstall yet if it says uninstall is incomplete. Restart Windows, run uninstall again, and wait for `Local data removed, including recovery code and state files.`
 
 You can also run installer\uninstall.bat from your original downloaded source folder. If Brake is installed, it forwards uninstall to `C:\Program Files\Brake`.
 
@@ -31,4 +33,4 @@ The recovery code can start a 10-minute emergency cooldown. When the cooldown fi
 
 Close the Brake window from the tray menu, then run uninstall again.
 
-If a Python, Node, or Electron process is still holding a file, restart Windows and run installer\uninstall.bat before opening Brake again.
+If a Python, Node, Electron, or launcher process is still holding a file, restart Windows and run installer\uninstall.bat before opening Brake again.

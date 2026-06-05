@@ -67,6 +67,12 @@ If commitment is active, use your recovery code and wait for the emergency coold
 
 Restart Windows. Then run installer\uninstall.bat before opening Brake.
 
+## Old recovery code still works after reinstall
+
+That means local data survived uninstall. Run `C:\Program Files\Brake\installer\uninstall.bat` again as administrator.
+
+Do not reinstall until the uninstall window says `Local data removed, including recovery code and state files.`
+
 ## I found a false positive or missed detection
 
 Open a GitHub issue using the false positive or missed detection template.

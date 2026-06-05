@@ -107,7 +107,8 @@ function Stop-BrakeUserProcesses {
                     "brake.exe",
                     "BrakeAgent.exe",
                     "BrakeLockout.exe",
-                    "BrakeUninstallGuard.exe"
+                    "BrakeUninstallGuard.exe",
+                    "wscript.exe"
                 )
             }
     } catch {
@@ -120,11 +121,13 @@ function Stop-BrakeUserProcesses {
         $cmd = [string]$proc.CommandLine
         $exe = [string]$proc.ExecutablePath
         $isBrake =
-            ($cmd.IndexOf("brake.gui", [StringComparison]::OrdinalIgnoreCase) -ge 0) -or
-            ($cmd.IndexOf("brake.agent", [StringComparison]::OrdinalIgnoreCase) -ge 0) -or
-            ($cmd.IndexOf("brake.lockout", [StringComparison]::OrdinalIgnoreCase) -ge 0) -or
+            ($cmd.IndexOf("brake.", [StringComparison]::OrdinalIgnoreCase) -ge 0) -or
+            ($cmd.IndexOf("start-brake", [StringComparison]::OrdinalIgnoreCase) -ge 0) -or
             ($cmd.IndexOf($repoRoot, [StringComparison]::OrdinalIgnoreCase) -ge 0) -or
-            ($exe.IndexOf($repoRoot, [StringComparison]::OrdinalIgnoreCase) -ge 0)
+            ($cmd.IndexOf($installRoot, [StringComparison]::OrdinalIgnoreCase) -ge 0) -or
+            ($cmd.IndexOf($dataDir, [StringComparison]::OrdinalIgnoreCase) -ge 0) -or
+            ($exe.IndexOf($repoRoot, [StringComparison]::OrdinalIgnoreCase) -ge 0) -or
+            ($exe.IndexOf($installRoot, [StringComparison]::OrdinalIgnoreCase) -ge 0)
 
         if ($isBrake) {
             Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue
@@ -134,11 +137,48 @@ function Stop-BrakeUserProcesses {
     Start-Sleep -Seconds 1
 }
 
+function Remove-SensitiveDataFiles {
+    if (-not (Test-Path $dataDir)) { return $true }
+
+    $sensitivePatterns = @(
+        "state.json",
+        "state.key",
+        "state.initialized",
+        "recovery.json",
+        "state.json.*.tmp",
+        "recovery.json.*.tmp"
+    )
+
+    for ($i = 0; $i -lt 20; $i++) {
+        foreach ($pattern in $sensitivePatterns) {
+            Get-ChildItem -LiteralPath $dataDir -Filter $pattern -Force -ErrorAction SilentlyContinue |
+                ForEach-Object {
+                    Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue
+                }
+        }
+
+        $remaining = @()
+        foreach ($pattern in $sensitivePatterns) {
+            $remaining += @(Get-ChildItem -LiteralPath $dataDir -Filter $pattern -Force -ErrorAction SilentlyContinue)
+        }
+        if ($remaining.Count -eq 0) { return $true }
+
+        Stop-AgentIfRunning
+        Stop-BrakeUserProcesses
+        Start-Sleep -Milliseconds 500
+    }
+
+    return $false
+}
+
 function Remove-DataDir {
     if (-not (Test-Path $dataDir)) { return $true }
-    for ($i = 0; $i -lt 10; $i++) {
+
+    for ($i = 0; $i -lt 20; $i++) {
         Remove-Item -LiteralPath $dataDir -Recurse -Force -ErrorAction SilentlyContinue
         if (-not (Test-Path $dataDir)) { return $true }
+        Stop-AgentIfRunning
+        Stop-BrakeUserProcesses
         Start-Sleep -Milliseconds 500
     }
     return $false
@@ -165,9 +205,16 @@ foreach ($shortcutDir in $shortcutDirs) {
 }
 
 Write-Host "Removing Brake local data..."
-if (-not (Remove-DataDir)) {
-    Write-Warning "Could not remove $dataDir because a file is still in use."
-    Write-Warning "Restart Windows, then delete that folder manually."
+$uninstallComplete = $true
+if (-not (Remove-SensitiveDataFiles)) {
+    Write-Warning "Could not remove Brake security files from $dataDir."
+    Write-Warning "Restart Windows, run uninstall again, and do not reinstall until this succeeds."
+    $uninstallComplete = $false
+} elseif (-not (Remove-DataDir)) {
+    Write-Warning "Could not fully remove $dataDir because a file is still in use."
+    Write-Warning "Brake security files were removed, but logs or folders may remain."
+    Write-Warning "Restart Windows, then delete $dataDir manually or run uninstall again."
+    $uninstallComplete = $false
 }
 
 $machinePythonPath = [Environment]::GetEnvironmentVariable("PYTHONPATH", "Machine")
@@ -178,10 +225,15 @@ if ($machinePythonPath -and (Same-Path $machinePythonPath $repoRoot)) {
     Write-Host "Machine PYTHONPATH did not point only at this Brake install; leaving it unchanged."
 }
 
-Write-Host "Services and shortcut removed."
-if (-not (Test-Path $dataDir)) {
-    Write-Host "Local data removed."
+if (-not $uninstallComplete) {
+    Write-Host ""
+    Write-Warning "Uninstall incomplete. Brake local data was not fully removed."
+    Write-Warning "Do not reinstall yet if you want a fresh recovery code. Restart Windows and run uninstall again."
+    exit 1
 }
+
+Write-Host "Services and shortcut removed."
+Write-Host "Local data removed, including recovery code and state files."
 
 if (Same-Path $repoRoot $installRoot) {
     Write-Host "Scheduling installed app folder removal: $repoRoot"
