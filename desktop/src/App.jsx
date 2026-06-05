@@ -101,7 +101,7 @@ function StatusPanel({ status, now }) {
   const enabled = status.enabled;
   const recoveryLeft = status.recoveryUnlockPending ? formatRecoveryUnlockLeft(status.recoveryUnlockAfter, now) : "";
   const state = committed ? "committed" : enabled ? "protected" : "off";
-  const commitmentLeft = committed ? formatCommitmentLeft(status.committedUntil, now) : "";
+  const commitmentLeft = committed && !recoveryLeft ? formatCommitmentLeft(status.committedUntil, now) : "";
 
   return (
     <section className={`status-panel ${state}`}>
