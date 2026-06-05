@@ -62,16 +62,17 @@ function formatCommitmentLeft(committedUntil, now) {
   if (!Number.isFinite(end) || remainingMs <= 0) return "ending soon";
 
   const totalMinutes = Math.ceil(remainingMs / 60000);
+  if (totalMinutes < 1) return "ending soon";
   if (totalMinutes < 60) {
     return `${totalMinutes} ${totalMinutes === 1 ? "minute" : "minutes"} left`;
   }
 
-  const totalHours = Math.ceil(totalMinutes / 60);
+  const totalHours = Math.floor(totalMinutes / 60);
   if (totalHours < 24) {
     return `${totalHours} ${totalHours === 1 ? "hour" : "hours"} left`;
   }
 
-  const totalDays = Math.ceil(totalHours / 24);
+  const totalDays = Math.floor(totalHours / 24);
   return `${totalDays} ${totalDays === 1 ? "day" : "days"} left`;
 }
 
@@ -80,7 +81,8 @@ function formatRecoveryUnlockLeft(unlockAfter, now) {
   const end = new Date(unlockAfter).getTime();
   const remainingMs = end - now;
   if (!Number.isFinite(end) || remainingMs <= 0) return "ending soon";
-  const totalMinutes = Math.ceil(remainingMs / 60000);
+  const totalMinutes = Math.floor(remainingMs / 60000);
+  if (totalMinutes < 1) return "ending soon";
   return `${totalMinutes} ${totalMinutes === 1 ? "minute" : "minutes"} left`;
 }
 
@@ -484,7 +486,7 @@ function GuideSection({ title, children }) {
 function GuideModal({ tab, status, onClose }) {
   const duration = Number(status.lockoutDurationMinutes) || 1;
   const title = tab === "anime"
-    ? "How anime detection works"
+    ? "How advanced settings work"
     : tab === "detection"
       ? "How detection works"
       : "How Brake works";
@@ -978,7 +980,7 @@ export default function App() {
           <ScanEye size={16} /> Detection
         </button>
         <button className={tab === "anime" ? "active" : ""} onClick={() => setTab("anime")}>
-          <Activity size={16} /> Anime
+          <Activity size={16} /> Advanced
         </button>
       </nav>
 
@@ -1076,8 +1078,8 @@ export default function App() {
         ) : (
           <>
             <div className="page-head">
-              <h1>Anime</h1>
-              <p>Optional local checks for illustrated explicit content.</p>
+              <h1>Advanced</h1>
+              <p>Optional local tools for illustrated explicit content and future controls.</p>
               {notice ? <p className="notice">{notice}</p> : null}
             </div>
             <Card icon={Activity} title="Illustrated detector" subtitle="A separate local model for anime, drawings, and rendered explicit content.">
