@@ -21,7 +21,7 @@ const fallbackStatus = {
   enabled: false,
   commitmentActive: false,
   committedUntil: null,
-  lockoutDurationMinutes: 3,
+  lockoutDurationMinutes: 10,
   detectionSensitivity: "balanced",
   animeDetectionEnabled: false,
   animeDetectionMode: "standard",
@@ -229,7 +229,7 @@ function PasswordModal({ mode, durationMinutes, commitmentActive, error, onCance
         </p>
         {enabling ? (
           <p>
-            Clear explicit content triggers a <strong>{durationMinutes}-minute</strong> lockout, then Windows shuts down. After restart, Brake watches strictly for five minutes. Incidental nudity gets a warning pause first.
+            Clear explicit content triggers a <strong>{durationMinutes}-minute</strong> lockout, then Windows shuts down. After restart, Brake watches strictly for five minutes. Balanced mode warns on incidental nudity first, then escalates if it keeps happening.
           </p>
         ) : null}
         <label className="field">
@@ -515,8 +515,8 @@ function GuideModal({ tab, status, onClose }) {
           </GuideSection>
           <GuideSection title="Sensitivity levels">
             <p><strong>Light:</strong> clear explicit content only. Lowest false-positive rate.</p>
-            <p><strong>Balanced:</strong> recommended default. Clear explicit content locks. Partial nudity gets a short warning pause instead of shutdown.</p>
-            <p><strong>Strict:</strong> stronger partial-nudity response. It asks for matching scans first so a single random hit is filtered out.</p>
+            <p><strong>Balanced:</strong> recommended default. Clear explicit content locks. Nudity gets a short warning first, then repeated nudity escalates to the full lockout.</p>
+            <p><strong>Strict:</strong> confirmed nudity triggers the full lockout. Brake uses a fast second scan for partial nudity so one random hit is filtered out.</p>
           </GuideSection>
           <GuideSection title="Changing sensitivity">
             <p>Making detection stricter asks for confirmation. During commitment, you cannot lower it again until the commitment ends.</p>
@@ -1057,7 +1057,7 @@ export default function App() {
               <SensitivityOption
                 title="Balanced"
                 active={status.detectionSensitivity === "balanced"}
-                description="Recommended for most people. Incidental nudity gets a short warning pause first."
+                description="Recommended for most people. Nudity gets a warning first, then repeated nudity escalates to a full lockout."
                 disabled={status.commitmentActive && SENSITIVITY_RANK.balanced < SENSITIVITY_RANK[status.detectionSensitivity]}
                 note={status.commitmentActive && SENSITIVITY_RANK.balanced < SENSITIVITY_RANK[status.detectionSensitivity] ? "Locked by commitment" : ""}
                 onClick={() => requestSensitivity("balanced")}
@@ -1065,7 +1065,7 @@ export default function App() {
               <SensitivityOption
                 title="Strict"
                 active={status.detectionSensitivity === "strict"}
-                description="Stronger response for partial nudity, with matching scans to reduce random false hits."
+                description="Confirmed nudity triggers the full lockout. Uses a fast second scan to reduce random false hits."
                 onClick={() => requestSensitivity("strict")}
               />
               <div className="card-actions">

@@ -39,14 +39,11 @@ PENALTY_LOCKOUT_MESSAGE = (
     "Windows will shut down when this timer ends."
 )
 
+FAST_CONFIRM_SECONDS = t(1, 1)
 BALANCED_WARNING_SECONDS = t(10, 3)
 BALANCED_COOLDOWN_SECONDS = t(60, 8)
-STRICT_PENALTY_LADDER = [
-    t(30, 5),
-    t(60, 10),
-    t(120, 20),
-]
-STRICT_RESET_SECONDS = t(10 * 60, 30)
+BALANCED_ESCALATION_WINDOW = t(5 * 60, 30)
+BALANCED_CONTEXT_STRIKES_TO_LOCKOUT = 2
 STRICT_CONFIRM_WINDOW = t(10, 4)
 # Hard explicit video can flicker between labels/frames. A single lower-score
 # genital/anus hit arms a short strike window; a second hard hit confirms.
@@ -59,9 +56,9 @@ BALANCED_WARNING_MESSAGE = (
     "Possible explicit content was detected. This short pause is a chance "
     "to skip or close the scene. Your computer will not shut down."
 )
-STRICT_WARNING_MESSAGE = (
-    "Possible explicit content was detected and confirmed across two scans. "
-    "This pause is meant to interrupt the pattern. Your computer will not shut down."
+STRICT_LOCKOUT_MESSAGE = (
+    "Strict mode treats confirmed nudity as a full lockout. Your computer "
+    "will shut down when this timer ends."
 )
 
 
@@ -98,10 +95,10 @@ class Watcher:
         self.probation = ProbationStore()
         self._lockout_until = 0.0
         self._last_balanced_warning_at = 0.0
+        self._last_balanced_context_at = 0.0
+        self._balanced_context_strike_count = 0
         self._last_strict_pending_label = ""
         self._last_strict_pending_at = 0.0
-        self._strict_strike_count = 0
-        self._last_strict_strike_at = 0.0
         self._last_hard_pending_label = ""
         self._last_hard_pending_at = 0.0
         self._hard_strike_count = 0
@@ -183,20 +180,31 @@ class Watcher:
 
         return max(record.penalty_duration_seconds, PENALTY_MIN_SECONDS)
 
-    def _handle_detection(self, hit: DetectionResult) -> None:
+    def _handle_detection(self, hit: DetectionResult) -> bool:
+        """Handle one hit. Return True when a fast confirmation scan should run."""
         if hit.detector == "anime_nsfw" and hit.severity == "context":
             self._handle_balanced_context(hit)
-            return
+            return False
+
+        sensitivity = self._current_sensitivity()
         if hit.severity == "context":
-            sensitivity = self._current_sensitivity()
             if sensitivity == "balanced":
                 self._handle_balanced_context(hit)
             elif sensitivity == "strict":
-                self._handle_strict_context(hit)
+                return self._handle_strict_context(hit)
             else:
                 _log.info("context detection ignored in light mode: label=%s", hit.label)
-            return
-        self._handle_hard(hit)
+            return False
+
+        if sensitivity == "strict":
+            _log.warning(
+                "strict hard detection treated as full lockout: label=%s conf=%.2f",
+                hit.label,
+                hit.confidence,
+            )
+            self._apply_hard_lockout(hit, message=STRICT_LOCKOUT_MESSAGE)
+            return False
+        return self._handle_hard(hit, fast_confirm=(sensitivity == "balanced"))
 
     def _apply_anime_mode(self, result: DetectionResult) -> DetectionResult:
         if result.detector != "anime_nsfw" or not result.triggered:
@@ -215,7 +223,7 @@ class Watcher:
             )
         return result
 
-    def _handle_hard(self, hit: DetectionResult) -> None:
+    def _handle_hard(self, hit: DetectionResult, *, fast_confirm: bool = False) -> bool:
         now = time.monotonic()
         label = hit.label or hit.detector.upper()
         if hit.confidence >= HARD_IMMEDIATE_CONFIDENCE:
@@ -224,7 +232,7 @@ class Watcher:
             self._hard_strike_count = 0
             _log.warning("hard detection immediately confirmed: label=%s conf=%.2f", label, hit.confidence)
             self._apply_hard_lockout(hit)
-            return
+            return False
         if (
             (now - self._last_hard_pending_at) <= HARD_CONFIRM_WINDOW
             and self._hard_strike_count >= 1
@@ -234,18 +242,20 @@ class Watcher:
             self._hard_strike_count = 0
             _log.warning("hard detection confirmed by second strike: label=%s conf=%.2f", label, hit.confidence)
             self._apply_hard_lockout(hit)
-            return
+            return False
         self._last_hard_pending_label = label
         self._last_hard_pending_at = now
         self._hard_strike_count = 1
         _log.warning(
-            "hard detection pending confirmation: label=%s conf=%.2f window=%ds",
+            "hard detection pending confirmation: label=%s conf=%.2f window=%ds fast_confirm=%s",
             label,
             hit.confidence,
             HARD_CONFIRM_WINDOW,
+            fast_confirm,
         )
+        return bool(fast_confirm)
 
-    def _apply_hard_lockout(self, hit: DetectionResult) -> None:
+    def _apply_hard_lockout(self, hit: DetectionResult, message: str = FIRST_LOCKOUT_MESSAGE) -> None:
         reason = hit.label or hit.detector.upper()
 
         probation_penalty = self._probation_penalty_seconds()
@@ -266,19 +276,31 @@ class Watcher:
         _spawn_lockout(
             duration,
             reason,
-            message=FIRST_LOCKOUT_MESSAGE,
+            message=message,
             shutdown_on_done=True,
         )
         self._lockout_until = time.monotonic() + duration
 
     def _handle_balanced_context(self, hit: DetectionResult) -> None:
         now = time.monotonic()
+        if (now - self._last_balanced_context_at) > BALANCED_ESCALATION_WINDOW:
+            self._balanced_context_strike_count = 0
+
         if (
             self._last_balanced_warning_at > 0
             and (now - self._last_balanced_warning_at) < BALANCED_COOLDOWN_SECONDS
         ):
             _log.info("balanced context warning suppressed by cooldown: label=%s", hit.label)
             return
+
+        self._balanced_context_strike_count += 1
+        self._last_balanced_context_at = now
+        if self._balanced_context_strike_count >= BALANCED_CONTEXT_STRIKES_TO_LOCKOUT:
+            self._balanced_context_strike_count = 0
+            _log.warning("balanced context escalated to full lockout: label=%s", hit.label)
+            self._apply_hard_lockout(hit)
+            return
+
         self._last_balanced_warning_at = now
         reason = hit.label or hit.detector.upper()
         _spawn_lockout(
@@ -289,7 +311,7 @@ class Watcher:
         )
         self._lockout_until = now + BALANCED_WARNING_SECONDS
 
-    def _handle_strict_context(self, hit: DetectionResult) -> None:
+    def _handle_strict_context(self, hit: DetectionResult) -> bool:
         now = time.monotonic()
         label = hit.label or hit.detector.upper()
         if (
@@ -298,29 +320,13 @@ class Watcher:
         ):
             self._last_strict_pending_label = ""
             self._last_strict_pending_at = 0.0
-            self._apply_strict_context_penalty(hit)
-            return
+            _log.warning("strict context confirmed as full lockout: label=%s", label)
+            self._apply_hard_lockout(hit, message=STRICT_LOCKOUT_MESSAGE)
+            return False
         self._last_strict_pending_label = label
         self._last_strict_pending_at = now
-        _log.info("strict: pending confirmation for %s", label)
-
-    def _apply_strict_context_penalty(self, hit: DetectionResult) -> None:
-        now = time.monotonic()
-        if (now - self._last_strict_strike_at) >= STRICT_RESET_SECONDS:
-            self._strict_strike_count = 0
-        self._strict_strike_count += 1
-        self._last_strict_strike_at = now
-        duration = STRICT_PENALTY_LADDER[
-            min(self._strict_strike_count - 1, len(STRICT_PENALTY_LADDER) - 1)
-        ]
-        reason = hit.label or hit.detector.upper()
-        _spawn_lockout(
-            duration,
-            reason,
-            message=STRICT_WARNING_MESSAGE,
-            shutdown_on_done=False,
-        )
-        self._lockout_until = now + duration
+        _log.info("strict: pending fast confirmation for %s", label)
+        return True
 
     def _scan_once(self) -> Optional[DetectionResult]:
         img = capture_all_monitors()
@@ -372,6 +378,15 @@ class Watcher:
                 hit = None
 
             if hit:
-                self._handle_detection(hit)
+                needs_fast_confirm = self._handle_detection(hit)
+                if needs_fast_confirm and time.monotonic() >= self._lockout_until:
+                    time.sleep(FAST_CONFIRM_SECONDS)
+                    try:
+                        confirm_hit = self._scan_once()
+                    except Exception as e:
+                        _log.exception("fast confirmation scan raised: %s", e)
+                        confirm_hit = None
+                    if confirm_hit:
+                        self._handle_detection(confirm_hit)
 
             time.sleep(interval)

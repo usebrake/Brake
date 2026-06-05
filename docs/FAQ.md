@@ -24,7 +24,7 @@ The shutdown makes the consequence harder to ignore. It breaks the session and s
 
 ## What about TV, movies, or accidental nudity?
 
-Balanced mode is designed for this. Incidental nudity gets a warning pause first instead of the full shutdown path.
+Balanced mode is designed for this. Incidental nudity gets a warning pause first. If nudity keeps appearing after that warning, Brake treats it as intentional and escalates to the full lockout.
 
 ## Will it slow my computer down?
 

@@ -1,4 +1,4 @@
-"""Unit tests for the three-mode detection sensitivity behavior."""
+﻿"""Unit tests for the three-mode detection sensitivity behavior."""
 from __future__ import annotations
 
 import os
@@ -162,85 +162,65 @@ def test_balanced_suppresses_second_hit_within_cooldown() -> None:
         restore_time()
 
     assert len(calls) == 1
-    print("  [ok] balanced cooldown suppresses repeated warning")
+    print("  [ok] balanced cooldown suppresses immediate repeated warning")
 
 
-def test_strict_first_hit_only_sets_pending() -> None:
+def test_balanced_repeated_context_after_cooldown_escalates_full_lockout() -> None:
+    import brake.service.watcher as watcher_mod
+
+    calls, original_spawn = _patch_lockout(watcher_mod)
+    restore_time = _patch_monotonic(watcher_mod, [100.0, 100.0 + watcher_mod.BALANCED_COOLDOWN_SECONDS + 1])
+    try:
+        w = _watcher("balanced")
+        w._handle_balanced_context(_context_hit())
+        w._handle_balanced_context(_context_hit())
+    finally:
+        watcher_mod._spawn_lockout = original_spawn
+        restore_time()
+
+    assert len(calls) == 2
+    assert calls[0].shutdown_on_done is False
+    assert calls[1].shutdown_on_done is True
+    assert calls[1].duration == 10 * 60
+    print("  [ok] balanced repeated context escalates to full lockout")
+
+
+def test_strict_first_context_hit_requests_fast_confirmation() -> None:
     import brake.service.watcher as watcher_mod
 
     calls, original_spawn = _patch_lockout(watcher_mod)
     restore_time = _patch_monotonic(watcher_mod, [100.0])
     try:
         w = _watcher("strict")
-        w._handle_strict_context(_context_hit())
+        needs_fast_confirm = w._handle_strict_context(_context_hit())
     finally:
         watcher_mod._spawn_lockout = original_spawn
         restore_time()
 
     assert calls == []
+    assert needs_fast_confirm is True
     assert w._last_strict_pending_label == "CONTEXT NUDITY (BUTTOCKS_EXPOSED)"
-    print("  [ok] strict first hit sets pending only")
+    print("  [ok] strict first context hit requests fast confirmation")
 
 
-def test_strict_second_hit_confirms_within_window() -> None:
+def test_strict_second_context_hit_confirms_full_lockout() -> None:
     import brake.service.watcher as watcher_mod
 
     calls, original_spawn = _patch_lockout(watcher_mod)
-    restore_time = _patch_monotonic(watcher_mod, [100.0, 105.0, 105.0])
+    restore_time = _patch_monotonic(watcher_mod, [100.0, 101.0])
     try:
         w = _watcher("strict")
         hit = _context_hit()
-        w._handle_strict_context(hit)
-        w._handle_strict_context(hit)
+        assert w._handle_strict_context(hit) is True
+        assert w._handle_strict_context(hit) is False
     finally:
         watcher_mod._spawn_lockout = original_spawn
         restore_time()
 
     assert len(calls) == 1
-    assert calls[0].duration == watcher_mod.STRICT_PENALTY_LADDER[0]
-    assert calls[0].shutdown_on_done is False
-    print("  [ok] strict second hit confirms within window")
-
-
-def test_strict_cumulative_ladder() -> None:
-    import brake.service.watcher as watcher_mod
-
-    calls, original_spawn = _patch_lockout(watcher_mod)
-    restore_time = _patch_monotonic(watcher_mod, [100.0, 101.0, 102.0])
-    try:
-        w = _watcher("strict")
-        hit = _context_hit()
-        w._apply_strict_context_penalty(hit)
-        w._apply_strict_context_penalty(hit)
-        w._apply_strict_context_penalty(hit)
-    finally:
-        watcher_mod._spawn_lockout = original_spawn
-        restore_time()
-
-    assert [c.duration for c in calls] == watcher_mod.STRICT_PENALTY_LADDER
-    assert all(not c.shutdown_on_done for c in calls)
-    print("  [ok] strict cumulative ladder uses 30s, 60s, 120s")
-
-
-def test_strict_reset_after_idle_window() -> None:
-    import brake.service.watcher as watcher_mod
-
-    calls, original_spawn = _patch_lockout(watcher_mod)
-    restore_time = _patch_monotonic(watcher_mod, [100.0, 101.0 + watcher_mod.STRICT_RESET_SECONDS])
-    try:
-        w = _watcher("strict")
-        hit = _context_hit()
-        w._apply_strict_context_penalty(hit)
-        w._apply_strict_context_penalty(hit)
-    finally:
-        watcher_mod._spawn_lockout = original_spawn
-        restore_time()
-
-    assert [c.duration for c in calls] == [
-        watcher_mod.STRICT_PENALTY_LADDER[0],
-        watcher_mod.STRICT_PENALTY_LADDER[0],
-    ]
-    print("  [ok] strict idle reset drops next penalty back to first rung")
+    assert calls[0].duration == 10 * 60
+    assert calls[0].shutdown_on_done is True
+    print("  [ok] strict confirmed context triggers full lockout")
 
 
 def test_light_scan_ignores_context_hits() -> None:
@@ -271,21 +251,40 @@ def test_soft_context_scan_does_not_trigger_warning() -> None:
     print("  [ok] soft context scan does not trigger warning")
 
 
-def test_hard_first_hit_only_sets_pending() -> None:
+def test_balanced_hard_first_hit_requests_fast_confirmation() -> None:
     import brake.service.watcher as watcher_mod
 
     calls, original_spawn = _patch_lockout(watcher_mod)
     restore_time = _patch_monotonic(watcher_mod, [100.0])
     try:
         w = _watcher("balanced")
-        w._handle_hard(_hard_hit())
+        needs_fast_confirm = w._handle_detection(_hard_hit())
     finally:
         watcher_mod._spawn_lockout = original_spawn
         restore_time()
 
     assert calls == []
+    assert needs_fast_confirm is True
     assert w._last_hard_pending_label == "EXPLICIT (MALE_GENITALIA_EXPOSED)"
-    print("  [ok] hard first hit sets pending only")
+    print("  [ok] balanced hard first hit requests fast confirmation")
+
+
+def test_light_hard_first_hit_keeps_old_confirmation_flow() -> None:
+    import brake.service.watcher as watcher_mod
+
+    calls, original_spawn = _patch_lockout(watcher_mod)
+    restore_time = _patch_monotonic(watcher_mod, [100.0])
+    try:
+        w = _watcher("light")
+        needs_fast_confirm = w._handle_detection(_hard_hit())
+    finally:
+        watcher_mod._spawn_lockout = original_spawn
+        restore_time()
+
+    assert calls == []
+    assert needs_fast_confirm is False
+    assert w._last_hard_pending_label == "EXPLICIT (MALE_GENITALIA_EXPOSED)"
+    print("  [ok] light hard first hit keeps old confirmation flow")
 
 
 def test_very_high_hard_hit_immediately_confirms_lockout() -> None:
@@ -295,12 +294,13 @@ def test_very_high_hard_hit_immediately_confirms_lockout() -> None:
     restore_time = _patch_monotonic(watcher_mod, [100.0])
     try:
         w = _watcher("balanced")
-        w._handle_hard(_very_high_hard_hit())
+        w._handle_detection(_very_high_hard_hit())
     finally:
         watcher_mod._spawn_lockout = original_spawn
         restore_time()
 
     assert len(calls) == 1
+    assert calls[0].duration == 10 * 60
     assert calls[0].shutdown_on_done is True
     assert w._last_hard_pending_label == ""
     print("  [ok] very high hard hit immediately confirms full lockout")
@@ -314,13 +314,14 @@ def test_hard_second_hit_confirms_lockout() -> None:
     try:
         w = _watcher("balanced")
         hit = _hard_hit()
-        w._handle_hard(hit)
-        w._handle_hard(hit)
+        w._handle_detection(hit)
+        w._handle_detection(hit)
     finally:
         watcher_mod._spawn_lockout = original_spawn
         restore_time()
 
     assert len(calls) == 1
+    assert calls[0].duration == 10 * 60
     assert calls[0].shutdown_on_done is True
     print("  [ok] hard second hit confirms full lockout")
 
@@ -332,31 +333,51 @@ def test_hard_second_hit_can_change_label() -> None:
     restore_time = _patch_monotonic(watcher_mod, [100.0, 112.0])
     try:
         w = _watcher("balanced")
-        w._handle_hard(_hard_hit("EXPLICIT (MALE_GENITALIA_EXPOSED)"))
-        w._handle_hard(_hard_hit("EXPLICIT (FEMALE_GENITALIA_EXPOSED)"))
+        w._handle_detection(_hard_hit("EXPLICIT (MALE_GENITALIA_EXPOSED)"))
+        w._handle_detection(_hard_hit("EXPLICIT (FEMALE_GENITALIA_EXPOSED)"))
     finally:
         watcher_mod._spawn_lockout = original_spawn
         restore_time()
 
     assert len(calls) == 1
+    assert calls[0].duration == 10 * 60
     assert calls[0].shutdown_on_done is True
     print("  [ok] hard second hit confirms even when video label changes")
+
+
+def test_strict_hard_hit_immediately_full_locks() -> None:
+    import brake.service.watcher as watcher_mod
+
+    calls, original_spawn = _patch_lockout(watcher_mod)
+    restore_time = _patch_monotonic(watcher_mod, [100.0])
+    try:
+        w = _watcher("strict")
+        needs_fast_confirm = w._handle_detection(_hard_hit())
+    finally:
+        watcher_mod._spawn_lockout = original_spawn
+        restore_time()
+
+    assert needs_fast_confirm is False
+    assert len(calls) == 1
+    assert calls[0].shutdown_on_done is True
+    print("  [ok] strict hard hit immediately full-locks")
 
 
 def main() -> int:
     tests = [
         test_balanced_context_spawns_warning_no_shutdown,
         test_balanced_suppresses_second_hit_within_cooldown,
-        test_strict_first_hit_only_sets_pending,
-        test_strict_second_hit_confirms_within_window,
-        test_strict_cumulative_ladder,
-        test_strict_reset_after_idle_window,
+        test_balanced_repeated_context_after_cooldown_escalates_full_lockout,
+        test_strict_first_context_hit_requests_fast_confirmation,
+        test_strict_second_context_hit_confirms_full_lockout,
         test_light_scan_ignores_context_hits,
         test_soft_context_scan_does_not_trigger_warning,
-        test_hard_first_hit_only_sets_pending,
+        test_balanced_hard_first_hit_requests_fast_confirmation,
+        test_light_hard_first_hit_keeps_old_confirmation_flow,
         test_very_high_hard_hit_immediately_confirms_lockout,
         test_hard_second_hit_confirms_lockout,
         test_hard_second_hit_can_change_label,
+        test_strict_hard_hit_immediately_full_locks,
     ]
     for fn in tests:
         print(f"\n{fn.__name__}")

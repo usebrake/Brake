@@ -9,7 +9,7 @@ It runs locally on your computer. It checks screenshots on your device, uses loc
 1. Install Brake.
 2. Open Brake from the Start Menu.
 3. Save the recovery code shown on first launch.
-4. Choose your lockout length.
+4. Choose your lockout length. The default is 10 minutes.
 5. Turn on protection and set a password.
 6. Optional: lock in a commitment so the password cannot turn protection off early.
 
@@ -19,15 +19,15 @@ When protection is on, Brake checks the screen in the background.
 
 Clear explicit content triggers a full lockout. When that lockout ends, Windows shuts down. After restart, Brake watches strictly for five minutes so the same content cannot be reopened immediately.
 
-Incidental or partial nudity is handled more carefully. Depending on your sensitivity setting, it may be ignored, cause a short warning pause, or require repeated matching detections before Brake responds harder.
+Incidental or partial nudity is handled according to your sensitivity setting. Light ignores most of it. Balanced gives one warning first, then escalates repeated nudity. Strict treats confirmed nudity as a full lockout.
 
 ## Sensitivity
 
 Light: lowest false-positive risk. Clear explicit content only.
 
-Balanced: recommended. Clear explicit content locks. Partial nudity gets a short warning pause first.
+Balanced: recommended. Clear explicit content locks. Nudity gets a short warning first. If nudity keeps appearing after the warning, Brake escalates to the full lockout.
 
-Strict: stronger response to partial nudity. It asks for matching scans first to reduce random false hits.
+Strict: strongest response. Clear explicit content locks immediately. Partial nudity gets a fast second scan; if it is confirmed, Brake triggers the full lockout.
 
 ## Commitment
 

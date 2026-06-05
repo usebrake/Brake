@@ -34,7 +34,7 @@ Screenshots are being refreshed for the new Brake UI.
 - Optionally detects illustrated/anime NSFW content with a separate local model.
 - Offers Light, Balanced, and Strict sensitivity.
 - Treats clear explicit content as a full lockout.
-- Treats incidental nudity more carefully to reduce false positives.
+- In Balanced mode, warns on nudity first, then escalates repeated nudity to a full lockout.
 - Shuts down Windows after a full lockout.
 - Runs a five-minute strict-watch window after restart.
 - Supports Commitment Mode so your password cannot turn protection off early.
