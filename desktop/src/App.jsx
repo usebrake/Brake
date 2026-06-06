@@ -32,6 +32,7 @@ const fallbackStatus = {
 const MIN_PASSWORD_LENGTH = 6;
 const SENSITIVITY_RANK = { light: 0, balanced: 1, strict: 2 };
 const ANIME_MODE_RANK = { standard: 0, strict: 1 };
+const INCREASE_CONFIRM_GRACE_MS = 45000;
 
 function BrakeMark({ tone = "gold" }) {
   return (
@@ -381,9 +382,10 @@ function SettingsPasswordModal({ title, body, error, onCancel, onSubmit }) {
   );
 }
 
-function CommitmentModal({ error, onCancel, onSubmit }) {
-  const [amount, setAmount] = useState(3);
-  const [unit, setUnit] = useState("days");
+function CommitmentModal({ mode = "create", committedUntil = null, error, onCancel, onSubmit }) {
+  const extending = mode === "extend";
+  const [amount, setAmount] = useState(extending ? 1 : 3);
+  const [unit, setUnit] = useState(extending ? "hours" : "days");
   const [password, setPassword] = useState("");
 
   const submit = (event) => {
@@ -394,19 +396,23 @@ function CommitmentModal({ error, onCancel, onSubmit }) {
     }
     const safeAmount = Math.max(1, Math.min(365, Number(amount) || 1));
     const millis = safeAmount * (unit === "hours" ? 60 * 60 * 1000 : 24 * 60 * 60 * 1000);
-    const until = new Date(Date.now() + millis).toISOString().replace("Z", "+00:00");
-    onSubmit({ until, password }, "");
+    const currentUntilMs = Date.parse(committedUntil || "");
+    const baseMs = extending && !Number.isNaN(currentUntilMs) && currentUntilMs > Date.now() ? currentUntilMs : Date.now();
+    const until = new Date(baseMs + millis).toISOString().replace("Z", "+00:00");
+    onSubmit({ until, password, mode }, "");
   };
 
   return (
-    <Modal title="Lock in a commitment" onClose={onCancel}>
+    <Modal title={extending ? "Extend commitment" : "Lock in a commitment"} onClose={onCancel}>
       <form className="password-form" onSubmit={submit}>
         <p>
-          Choose how long Brake should stay locked in. During a commitment, your password cannot turn protection off. You can make settings stricter, but not easier to bypass.
+          {extending
+            ? "Add time to the active commitment. Brake will only accept a later end time, and your password still cannot shorten or remove it."
+            : "Choose how long Brake should stay locked in. During a commitment, your password cannot turn protection off. You can make settings stricter, but not easier to bypass."}
         </p>
         <div className="inline-fields">
           <label className="field compact">
-            <span>Lock in for</span>
+            <span>{extending ? "Add" : "Lock in for"}</span>
             <input
               min="1"
               max="365"
@@ -435,7 +441,7 @@ function CommitmentModal({ error, onCancel, onSubmit }) {
         {error ? <p className="form-error">{error}</p> : null}
         <div className="modal-actions">
           <button className="btn secondary" type="button" onClick={onCancel}>Cancel</button>
-          <button className="btn primary" type="submit">Lock it in</button>
+          <button className="btn primary" type="submit">{extending ? "Extend" : "Lock it in"}</button>
         </div>
       </form>
     </Modal>
@@ -582,6 +588,8 @@ export default function App() {
   const durationPreserveUntil = useRef(0);
   const sensitivityPreserveUntil = useRef(0);
   const durationDraft = useRef(fallbackStatus.lockoutDurationMinutes);
+  const lockoutIncreaseConfirmUntil = useRef(0);
+  const commitmentIncreaseConfirmUntil = useRef(0);
 
   useEffect(() => {
     let alive = true;
@@ -701,6 +709,21 @@ export default function App() {
       }));
     });
   };
+  const requestTimedConfirmation = (kind, prompt, action) => {
+    const ref = kind === "commitment" ? commitmentIncreaseConfirmUntil : lockoutIncreaseConfirmUntil;
+    if (Date.now() < ref.current) {
+      action();
+      return;
+    }
+    setConfirmPrompt({
+      ...prompt,
+      onConfirm: () => {
+        ref.current = Date.now() + INCREASE_CONFIRM_GRACE_MS;
+        setConfirmPrompt(null);
+        action();
+      }
+    });
+  };
   const submitPasswordReset = (payload, localError = "") => {
     if (localError) {
       setResetPasswordPrompt((current) => ({ ...current, error: localError }));
@@ -721,18 +744,17 @@ export default function App() {
     });
   };
   const toggleCommitment = () => {
-    if (status.commitmentActive) {
-      setNotice("Commitment is active. Use your recovery code from Turn off protection for emergency override.");
-      return;
-    }
-    setCommitmentPrompt({ error: "" });
+    setCommitmentPrompt({ error: "", mode: status.commitmentActive ? "extend" : "create" });
   };
   const submitCommitment = (payload, localError = "") => {
     if (localError) {
       setCommitmentPrompt((current) => ({ ...current, error: localError }));
       return;
     }
-    window.brake?.setCommitment?.(payload).then((response) => {
+    const currentUntilMs = Date.parse(status.committedUntil || "");
+    const nextUntilMs = Date.parse(payload?.until || "");
+    const extendsActiveCommitment = status.commitmentActive && !Number.isNaN(currentUntilMs) && !Number.isNaN(nextUntilMs) && nextUntilMs > currentUntilMs;
+    const submit = () => window.brake?.setCommitment?.(payload).then((response) => {
       if (response?.ok) {
         applyBackendResponse(response);
         setCommitmentPrompt(null);
@@ -744,12 +766,37 @@ export default function App() {
         error: humanError(response?.error || "Commitment was not accepted.")
       }));
     });
+    if (extendsActiveCommitment) {
+      requestTimedConfirmation("commitment", {
+        title: "Extend commitment?",
+        body: "This adds time to the active commitment. Your password still cannot shorten it or turn protection off until the new end time.",
+        warning: "Use this only when you are sure you want stronger commitment.",
+        confirmLabel: "Extend"
+      }, submit);
+      return;
+    }
+    submit();
   };
-  const changeDuration = (delta) => {
-    const next = Math.max(1, Math.min(60, (Number(durationDraft.current) || 1) + delta));
+  const applyDuration = (next) => {
     durationDraft.current = next;
     setStatus((current) => ({ ...current, lockoutDurationMinutes: next }));
     saveDurationSoon(next);
+  };
+  const confirmDurationIncrease = (next, action) => {
+    if (next <= (Number(durationDraft.current) || 1)) {
+      action();
+      return;
+    }
+    requestTimedConfirmation("lockout", {
+      title: "Increase lockout length?",
+      body: "This makes future full lockouts last longer before Brake releases the screen and continues its shutdown flow.",
+      warning: status.commitmentActive ? "Because commitment is active, you may not be able to lower this again until the commitment ends." : "You can lower it later if protection allows it.",
+      confirmLabel: "Increase"
+    }, action);
+  };
+  const changeDuration = (delta) => {
+    const next = Math.max(1, Math.min(60, (Number(durationDraft.current) || 1) + delta));
+    confirmDurationIncrease(next, () => applyDuration(next));
   };
   const changeDurationInput = (value) => {
     if (value === "") {
@@ -760,18 +807,11 @@ export default function App() {
     const parsed = Number.parseInt(value, 10);
     if (Number.isNaN(parsed)) return;
     const next = Math.max(1, Math.min(60, parsed));
-    durationDraft.current = next;
-    setStatus((current) => ({
-      ...current,
-      lockoutDurationMinutes: next
-    }));
-    saveDurationSoon(next);
+    confirmDurationIncrease(next, () => applyDuration(next));
   };
   const normalizeDurationInput = () => {
     const next = Math.max(1, Math.min(60, Number(status.lockoutDurationMinutes) || 1));
-    durationDraft.current = next;
-    setStatus((current) => ({ ...current, lockoutDurationMinutes: next }));
-    saveDurationSoon(next);
+    confirmDurationIncrease(next, () => applyDuration(next));
   };
   const applySensitivity = (detectionSensitivity, password = "") => {
     const call = password ? window.brake?.setSensitivityWithPassword : window.brake?.setSensitivity;
@@ -1004,7 +1044,7 @@ export default function App() {
                   }
                   aside={
                     <button className={`pill-action ${status.commitmentActive ? "active" : ""}`} onClick={toggleCommitment}>
-                      {status.commitmentActive ? "Locked in" : "No commitment set"}
+                      {status.commitmentActive ? "Extend commitment" : "No commitment set"}
                     </button>
                   }
                 />
@@ -1135,7 +1175,7 @@ export default function App() {
           {status.enabled ? "Turn off protection" : "Turn on protection"}
         </Button>
         <Button variant="warning" onClick={toggleCommitment}>
-          {status.commitmentActive ? "Commitment active" : "Lock in commitment"}
+          {status.commitmentActive ? "Extend commitment" : "Lock in commitment"}
         </Button>
         <div className="spacer" />
         <button className="link-button" onClick={() => setShowInfo(true)}>How this works</button>
@@ -1167,6 +1207,8 @@ export default function App() {
 
       {commitmentPrompt ? (
         <CommitmentModal
+          mode={commitmentPrompt.mode || "create"}
+          committedUntil={status.committedUntil}
           error={commitmentPrompt.error}
           onCancel={() => setCommitmentPrompt(null)}
           onSubmit={submitCommitment}
