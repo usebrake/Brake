@@ -20,6 +20,7 @@ from brake.detectors.nudity import NudityDetector
 from brake.escalation import ProbationStore, ProbationTamperedError, current_boot_marker
 from brake.lockout.recovery import active_lockout_exists, spawn_resume_lockout_if_needed
 from brake.runtime import lockout_command
+from brake.service.scan_environment import ScanEnvironmentMonitor
 from brake.state import StateStore, StateTamperedError
 from brake.state.recovery_unlock import apply_due_recovery_unlock
 from brake.test_mode import is_test_mode, t
@@ -102,6 +103,7 @@ class Watcher:
         self._last_hard_pending_label = ""
         self._last_hard_pending_at = 0.0
         self._hard_strike_count = 0
+        self.scan_environment = ScanEnvironmentMonitor()
 
     def _current_state(self):
         try:
@@ -371,6 +373,11 @@ class Watcher:
                 continue
             self._probation_penalty_seconds()
 
+            defer_seconds = self.scan_environment.defer_seconds()
+            if defer_seconds > 0:
+                time.sleep(min(defer_seconds, 0.5))
+                continue
+
             try:
                 hit = self._scan_once()
             except Exception as e:
@@ -389,4 +396,5 @@ class Watcher:
                     if confirm_hit:
                         self._handle_detection(confirm_hit)
 
-            time.sleep(interval)
+            sleep_interval = interval if hit else self.scan_environment.clean_scan_interval(interval)
+            time.sleep(sleep_interval)
