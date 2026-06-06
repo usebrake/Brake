@@ -1,7 +1,7 @@
 """Named-pipe IPC server hosted by BrakeService.
 
-Single-instance loop: create pipe → wait for client → handle one request →
-disconnect → repeat. Clients are short-lived (one RPC per connection).
+Single-instance loop: create pipe -> wait for client -> handle one request ->
+disconnect -> repeat. Clients are short-lived (one RPC per connection).
 """
 from __future__ import annotations
 
@@ -49,6 +49,26 @@ class IPCServer(threading.Thread):
 
     # ---- low-level pipe handling ----
 
+    def _pipe_security_attributes(self):
+        """Allow the desktop user to open the service pipe.
+
+        The pipe still uses the HMAC-signed protocol key, so this ACL only
+        makes the transport reachable from the interactive desktop app. The
+        service runs as LocalSystem; without an explicit ACL, Windows can
+        create a pipe that exists but rejects normal desktop users.
+        """
+        import pywintypes      # type: ignore[import-not-found]
+        import win32security   # type: ignore[import-not-found]
+
+        sddl = "D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;AU)"
+        sd = win32security.ConvertStringSecurityDescriptorToSecurityDescriptor(
+            sddl,
+            win32security.SDDL_REVISION_1,
+        )
+        sa = pywintypes.SECURITY_ATTRIBUTES()
+        sa.SECURITY_DESCRIPTOR = sd
+        return sa
+
     def _serve_one(self) -> None:
         import pywintypes      # type: ignore[import-not-found]
         import win32file       # type: ignore[import-not-found]
@@ -59,13 +79,13 @@ class IPCServer(threading.Thread):
             win32pipe.PIPE_ACCESS_DUPLEX,
             win32pipe.PIPE_TYPE_BYTE | win32pipe.PIPE_READMODE_BYTE | win32pipe.PIPE_WAIT,
             win32pipe.PIPE_UNLIMITED_INSTANCES,
-            65536, 65536, 0, None,
+            65536, 65536, 0, self._pipe_security_attributes(),
         )
         try:
             try:
                 win32pipe.ConnectNamedPipe(pipe, None)
             except pywintypes.error as e:
-                # Client may have already connected before our call — that's fine.
+                # Client may have already connected before our call; that is fine.
                 ERROR_PIPE_CONNECTED = 535
                 if e.winerror != ERROR_PIPE_CONNECTED:
                     raise
