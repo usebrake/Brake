@@ -15,6 +15,7 @@ class DetectionResult:
     confidence: float        # 0..1, or hit-count normalized
     label: str = ""          # short tag for the lockout reason line
     severity: str = "none"   # "hard" | "context" | "none"
+    region: str = ""         # scan region the winning finding came from
     details: Optional[str] = None  # debug-only; never persisted
 
     @classmethod

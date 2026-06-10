@@ -169,5 +169,6 @@ class AnimeNSFWDetector(Detector):
                 confidence=best_score,
                 label=f"POSSIBLE NSFW ART ({best_region})",
                 severity="context",
+                region=best_region,
             )
         return DetectionResult.negative(self.name)

@@ -8,11 +8,11 @@ from __future__ import annotations
 import logging
 import subprocess
 import time
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from PIL import ImageStat
 
-from brake.capture.screen import capture_all_monitors
+from brake.capture.screen import capture_all_monitors, reset_capture_handle
 from brake.config import Settings, load_settings
 from brake.detectors.anime_nsfw import AnimeNSFWDetector
 from brake.detectors.base import DetectionResult, Detector
@@ -21,6 +21,7 @@ from brake.escalation import ProbationStore, ProbationTamperedError, current_boo
 from brake.lockout.recovery import active_lockout_exists, spawn_resume_lockout_if_needed
 from brake.runtime import lockout_command
 from brake.service.scan_environment import ScanEnvironmentMonitor
+from brake.service.scan_pacer import FramePacer, SUSTAINED_SCAN_SECONDS
 from brake.state import StateStore, StateTamperedError
 from brake.state.recovery_unlock import apply_due_recovery_unlock
 from brake.test_mode import is_test_mode, t
@@ -40,7 +41,13 @@ PENALTY_LOCKOUT_MESSAGE = (
     "Windows will shut down when this timer ends."
 )
 
-FAST_CONFIRM_SECONDS = t(1, 1)
+# How many back-to-back zoom confirmations a suspicion streak may trigger
+# before the loop falls back to the pacer's normal cadence. Bounds CPU on
+# persistently borderline screens; the streak resets after the next clean scan.
+FAST_RESCAN_MAX_STREAK = 2
+# How often slow housekeeping (state file read, probation check) runs. The
+# tick loop itself is much faster than this.
+HOUSEKEEPING_SECONDS = 2.0
 BALANCED_WARNING_SECONDS = t(10, 3)
 BALANCED_COOLDOWN_SECONDS = t(60, 8)
 BALANCED_ESCALATION_WINDOW = t(5 * 60, 30)
@@ -104,16 +111,26 @@ class Watcher:
         self._last_hard_pending_at = 0.0
         self._hard_strike_count = 0
         self.scan_environment = ScanEnvironmentMonitor()
+        self._state_cached_at = 0.0
+        self._state_cache: Optional[tuple] = None  # (state,) once loaded
 
     def _current_state(self):
+        # The tick loop asks for state several times per second; reading and
+        # HMAC-verifying the state file that often is wasted work. A short
+        # cache keeps the loop cheap while staying responsive to toggles.
+        now = time.monotonic()
+        if self._state_cache is not None and (now - self._state_cached_at) < HOUSEKEEPING_SECONDS:
+            return self._state_cache[0]
         try:
             s = self.store.load()
             if s is not None:
                 s = apply_due_recovery_unlock(self.store, s)
-            return s
         except StateTamperedError:
             _log.critical("State tampered. Fail-secure: assume enabled.")
-            return None
+            s = None
+        self._state_cache = (s,)
+        self._state_cached_at = now
+        return s
 
     def _state_says_run(self) -> bool:
         s = self._current_state()
@@ -222,6 +239,7 @@ class Watcher:
                 confidence=result.confidence,
                 label=result.label.replace("POSSIBLE", "EXPLICIT") if result.label else "EXPLICIT ANIME",
                 severity="hard",
+                region=result.region,
             )
         return result
 
@@ -288,11 +306,10 @@ class Watcher:
         if (now - self._last_balanced_context_at) > BALANCED_ESCALATION_WINDOW:
             self._balanced_context_strike_count = 0
 
-        if (
-            self._last_balanced_warning_at > 0
-            and (now - self._last_balanced_warning_at) < BALANCED_COOLDOWN_SECONDS
-        ):
-            _log.info("balanced context warning suppressed by cooldown: label=%s", hit.label)
+        if now < self._lockout_until:
+            # The warning overlay is still up; the user has not had a chance
+            # to act on it yet, so this hit does not count as a new strike.
+            _log.info("balanced context ignored while warning active: label=%s", hit.label)
             return
 
         self._balanced_context_strike_count += 1
@@ -301,6 +318,16 @@ class Watcher:
             self._balanced_context_strike_count = 0
             _log.warning("balanced context escalated to full lockout: label=%s", hit.label)
             self._apply_hard_lockout(hit)
+            return
+
+        if (
+            self._last_balanced_warning_at > 0
+            and (now - self._last_balanced_warning_at) < BALANCED_COOLDOWN_SECONDS
+        ):
+            _log.info(
+                "balanced context strike counted, warning suppressed by cooldown: label=%s",
+                hit.label,
+            )
             return
 
         self._last_balanced_warning_at = now
@@ -330,71 +357,199 @@ class Watcher:
         _log.info("strict: pending fast confirmation for %s", label)
         return True
 
-    def _scan_once(self) -> Optional[DetectionResult]:
-        img = capture_all_monitors()
+    def _scan_once(
+        self,
+        img=None,
+        *,
+        profile: str = "full",
+        changed_box=None,
+        zoom_region: str = "",
+        reason: str = "",
+    ) -> Tuple[Optional[DetectionResult], Optional[DetectionResult]]:
+        """Run one detection pass over ``img`` (captured here when omitted).
+
+        Returns (hit, suspicion). ``hit`` is a policy-relevant triggered
+        result. ``suspicion`` is the strongest sub-threshold result, if any;
+        the loop uses it to schedule a fast zoomed follow-up scan.
+        """
+        scan_started = time.monotonic()
+        if img is None:
+            img = capture_all_monitors()
+        capture_ms = (time.monotonic() - scan_started) * 1000.0
         stat = ImageStat.Stat(img.resize((1, 1)))
         mean = tuple(round(v, 1) for v in stat.mean)
-        _log.info("capture: size=%sx%s mean_rgb=%s", img.width, img.height, mean)
         sensitivity = self._current_sensitivity()
         anime_enabled = self._anime_detection_enabled()
+        suspicion: Optional[DetectionResult] = None
+        hit: Optional[DetectionResult] = None
+        timings = [f"capture={capture_ms:.0f}ms"]
         for det in self.detectors:
-            if getattr(det, "name", "") == "anime_nsfw" and not anime_enabled:
-                _log.info("scan: detector=anime_nsfw skipped because anime detection is off")
-                continue
-            res = det.scan(img)
+            if getattr(det, "name", "") == "anime_nsfw":
+                if not anime_enabled:
+                    continue
+                if profile == "targeted":
+                    # The anime classifier is the heaviest model; it runs on
+                    # full sweeps only so the sustained cadence stays cheap.
+                    continue
+            det_started = time.monotonic()
+            if getattr(det, "accepts_scan_hints", False):
+                res = det.scan(
+                    img,
+                    profile=profile,
+                    changed_box=changed_box,
+                    zoom_region=zoom_region,
+                )
+            else:
+                res = det.scan(img)
             res = self._apply_anime_mode(res)
+            timings.append(f"{getattr(det, 'name', '?')}={(time.monotonic() - det_started) * 1000.0:.0f}ms")
             _log.info(
-                "scan: detector=%s triggered=%s severity=%s conf=%.2f label=%s",
+                "scan: detector=%s triggered=%s severity=%s conf=%.2f label=%s region=%s",
                 res.detector,
                 res.triggered,
                 res.severity,
                 res.confidence,
                 res.label,
+                res.region,
             )
+            if not res.triggered and res.severity != "none":
+                if suspicion is None or res.confidence > suspicion.confidence:
+                    suspicion = res
             if res.triggered and res.severity == "hard":
-                return res
+                hit = res
+                break
             if res.triggered and res.severity == "context" and sensitivity in ("balanced", "strict"):
-                return res
-        return None
+                hit = res
+                break
+        _log.info(
+            "scan timing: %s total=%.0fms reason=%s profile=%s zoom=%s size=%sx%s mean_rgb=%s suspicion=%s hit=%s",
+            " ".join(timings),
+            (time.monotonic() - scan_started) * 1000.0,
+            reason or "manual",
+            profile,
+            zoom_region or "-",
+            img.width,
+            img.height,
+            mean,
+            suspicion.label if suspicion else "none",
+            hit.label if hit else "none",
+        )
+        return hit, suspicion
 
     def run_forever(self) -> None:
-        interval = 2 if is_test_mode() else self.settings.scan_interval_seconds
-        _log.info("Watcher starting: interval=%ds test_mode=%s", interval, is_test_mode())
+        sustained = min(float(self.settings.scan_interval_seconds), SUSTAINED_SCAN_SECONDS)
+        if is_test_mode():
+            sustained = 1.0
+        pacer = FramePacer(sustained_scan_seconds=sustained)
+        _log.info(
+            "Watcher starting: tick-driven, sustained_scan=%.1fs test_mode=%s",
+            sustained,
+            is_test_mode(),
+        )
         spawn_resume_lockout_if_needed("watcher-start")
+
+        pending_zoom: Optional[str] = None  # region to zoom-confirm next tick
+        confirm_streak = 0
+        last_probation_at = 0.0
+        last_window_sig: Optional[tuple] = None
+        last_virtual_screen = None
 
         while True:
             if not self._state_says_run():
-                time.sleep(min(interval, 10))
+                pending_zoom = None
+                confirm_streak = 0
+                time.sleep(t(3, 1))
                 continue
 
             now = time.monotonic()
             if now < self._lockout_until:
-                time.sleep(min(interval, 5))
+                pending_zoom = None
+                confirm_streak = 0
+                time.sleep(min(5.0, max(0.5, self._lockout_until - now)))
                 continue
-            self._probation_penalty_seconds()
+
+            if now - last_probation_at >= HOUSEKEEPING_SECONDS:
+                last_probation_at = now
+                self._probation_penalty_seconds()
 
             defer_seconds = self.scan_environment.defer_seconds()
             if defer_seconds > 0:
                 time.sleep(min(defer_seconds, 0.5))
                 continue
+            snapshot = self.scan_environment.last_snapshot
+
+            # A new foreground window or page title means new content: look
+            # right away instead of waiting for the pixel diff to notice.
+            window_changed = False
+            if snapshot is not None:
+                window_sig = (snapshot.hwnd, snapshot.title)
+                window_changed = last_window_sig is not None and window_sig != last_window_sig
+                last_window_sig = window_sig
+                if last_virtual_screen not in (None, snapshot.virtual_screen):
+                    reset_capture_handle()
+                last_virtual_screen = snapshot.virtual_screen
 
             try:
-                hit = self._scan_once()
+                img = capture_all_monitors()
             except Exception as e:
-                _log.exception("scan_once raised: %s", e)
-                hit = None
+                _log.warning("capture failed, retrying: %s", e)
+                reset_capture_handle()
+                time.sleep(1.0)
+                continue
 
-            if hit:
-                needs_fast_confirm = self._handle_detection(hit)
-                if needs_fast_confirm and time.monotonic() >= self._lockout_until:
-                    time.sleep(FAST_CONFIRM_SECONDS)
-                    try:
-                        confirm_hit = self._scan_once()
-                    except Exception as e:
-                        _log.exception("fast confirmation scan raised: %s", e)
-                        confirm_hit = None
-                    if confirm_hit:
-                        self._handle_detection(confirm_hit)
+            force_confirm = pending_zoom is not None
+            decision = pacer.observe(
+                img,
+                now=time.monotonic(),
+                force_scan=force_confirm or window_changed,
+                force_reason="confirm" if force_confirm else "window",
+            )
 
-            sleep_interval = interval if hit else self.scan_environment.clean_scan_interval(interval)
-            time.sleep(sleep_interval)
+            hit: Optional[DetectionResult] = None
+            suspicion: Optional[DetectionResult] = None
+            if decision.scan:
+                zoom = pending_zoom or ""
+                pending_zoom = None
+                try:
+                    hit, suspicion = self._scan_once(
+                        img,
+                        profile=decision.sweep,
+                        changed_box=decision.changed_box,
+                        zoom_region=zoom,
+                        reason=decision.reason,
+                    )
+                except Exception as e:
+                    _log.exception("scan_once raised: %s", e)
+
+                wants_confirm = False
+                confirm_region = ""
+                if hit:
+                    wants_confirm = self._handle_detection(hit)
+                    confirm_region = hit.region
+                elif suspicion is not None and self._current_sensitivity() in ("balanced", "strict"):
+                    # Something landed below the trigger thresholds. Zoom into
+                    # that region next tick: small/zoomed-out content usually
+                    # crosses the threshold at double resolution.
+                    wants_confirm = True
+                    confirm_region = suspicion.region
+
+                if (
+                    wants_confirm
+                    and confirm_streak < FAST_RESCAN_MAX_STREAK
+                    and time.monotonic() >= self._lockout_until
+                ):
+                    confirm_streak += 1
+                    pending_zoom = confirm_region or ""
+                    _log.info(
+                        "zoom confirmation armed: region=%s streak=%d/%d",
+                        confirm_region or "-",
+                        confirm_streak,
+                        FAST_RESCAN_MAX_STREAK,
+                    )
+                elif hit is None and suspicion is None:
+                    confirm_streak = 0
+
+            tick = decision.tick_seconds
+            if snapshot is not None and snapshot.share_sensitive:
+                tick = max(tick, 1.0)
+            time.sleep(tick)

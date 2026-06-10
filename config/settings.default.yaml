@@ -1,4 +1,7 @@
-# NudeNet cadence — fast because the model is cheap (~300ms per scan).
+# Scanning is change-gated: the watcher diffs cheap frames a few times per
+# second and runs detection when the screen changes. This value caps the
+# detection cadence during sustained change (video playback); bursts, page
+# loads, and scroll stops are scanned immediately regardless.
 scan_interval_seconds: 3
 
 lockout_duration_seconds: 600  # fallback only — actual duration comes from State.lockout_duration_minutes

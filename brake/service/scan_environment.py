@@ -32,6 +32,10 @@ _DEDICATED_SHARE_PROCESSES = {
     "skype.exe",
     "slack.exe",
 }
+# Foreground-window titles that suggest a meeting or share is on screen.
+# Bare app names (discord, obs, ...) are intentionally absent: those apps are
+# matched by process name instead, so a browser tab merely mentioning them
+# does not slow scanning.
 _SHARE_TITLE_KEYWORDS = (
     "screen share",
     "screenshare",
@@ -39,12 +43,20 @@ _SHARE_TITLE_KEYWORDS = (
     "google meet",
     "zoom meeting",
     "microsoft teams",
-    "discord",
-    "obs",
-    "streamlabs",
-    "webex",
-    "skype",
     "slack huddle",
+    "huddle",
+)
+# Background windows only count when their title clearly indicates an active
+# share. A Discord/Slack/OBS window simply existing somewhere must not throttle
+# every clean scan.
+_ACTIVE_SHARE_TITLE_KEYWORDS = (
+    "screen share",
+    "screenshare",
+    "sharing your screen",
+    "is sharing",
+    "you are sharing",
+    "stop sharing",
+    "huddle",
 )
 
 Rect = Tuple[int, int, int, int]
@@ -80,6 +92,11 @@ def _contains_share_keyword(title: str) -> bool:
     return any(keyword in lowered for keyword in _SHARE_TITLE_KEYWORDS)
 
 
+def _contains_active_share_keyword(title: str) -> bool:
+    lowered = title.lower()
+    return any(keyword in lowered for keyword in _ACTIVE_SHARE_TITLE_KEYWORDS)
+
+
 class ScanEnvironmentMonitor:
     """Tracks scan timing conditions without changing detection policy."""
 
@@ -90,6 +107,10 @@ class ScanEnvironmentMonitor:
         self._last_virtual_screen: Optional[Rect] = None
         self._last_logged_state: Optional[tuple[bool, bool]] = None
         self._process_cache: dict[int, tuple[float, str]] = {}
+        # Walking every top-level window is too heavy for the watcher's fast
+        # tick, so the background-share answer is cached briefly.
+        self._background_share_cache: tuple[float, bool] = (0.0, False)
+        self.last_snapshot: Optional[WindowSnapshot] = None
 
     def defer_seconds(self) -> float:
         now = time.monotonic()
@@ -123,6 +144,7 @@ class ScanEnvironmentMonitor:
         self._last_fullscreen = snapshot.fullscreen
         self._last_virtual_screen = snapshot.virtual_screen
 
+        self.last_snapshot = snapshot
         state = (snapshot.fullscreen, snapshot.share_sensitive)
         if state != self._last_logged_state:
             self._last_logged_state = state
@@ -163,7 +185,7 @@ class ScanEnvironmentMonitor:
         fullscreen = _rect_covers(monitor_rect, window_rect) if hwnd else False
         share_sensitive = self._share_sensitive(process_name, title)
         if not share_sensitive:
-            share_sensitive = self._any_share_window_visible()
+            share_sensitive = self._any_share_window_visible_cached()
         return WindowSnapshot(
             hwnd=hwnd,
             process_name=process_name,
@@ -212,10 +234,18 @@ class ScanEnvironmentMonitor:
             return True
         return _contains_share_keyword(title)
 
+    def _any_share_window_visible_cached(self, ttl_seconds: float = 5.0) -> bool:
+        now = time.monotonic()
+        checked_at, value = self._background_share_cache
+        if now - checked_at < ttl_seconds:
+            return value
+        value = self._any_share_window_visible()
+        self._background_share_cache = (now, value)
+        return value
+
     def _any_share_window_visible(self) -> bool:
         try:
             import win32gui      # type: ignore[import-not-found]
-            import win32process  # type: ignore[import-not-found]
         except Exception:
             return False
 
@@ -231,9 +261,7 @@ class ScanEnvironmentMonitor:
                 title = _window_title(hwnd)
                 if not title:
                     return True
-                _, pid = win32process.GetWindowThreadProcessId(hwnd)
-                process_name = self._process_name_by_pid(int(pid))
-                if self._share_sensitive(process_name, title):
+                if _contains_active_share_keyword(title):
                     found = True
                     return False
             except Exception:

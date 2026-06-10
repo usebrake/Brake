@@ -185,6 +185,31 @@ def test_balanced_repeated_context_after_cooldown_escalates_full_lockout() -> No
     print("  [ok] balanced repeated context escalates to full lockout")
 
 
+def test_balanced_second_context_after_warning_escalates() -> None:
+    """Content that persists past the warning escalates without waiting out
+    the old 60s warning cooldown."""
+    import brake.service.watcher as watcher_mod
+
+    calls, original_spawn = _patch_lockout(watcher_mod)
+    # First hit at 100 spawns a warning that runs until 100 + warning length.
+    # Second hit lands shortly after the warning ends, well inside the
+    # warning cooldown, and must still escalate.
+    second_at = 100.0 + watcher_mod.BALANCED_WARNING_SECONDS + 2.0
+    restore_time = _patch_monotonic(watcher_mod, [100.0, second_at])
+    try:
+        w = _watcher("balanced")
+        w._handle_balanced_context(_context_hit())
+        w._handle_balanced_context(_context_hit())
+    finally:
+        watcher_mod._spawn_lockout = original_spawn
+        restore_time()
+
+    assert len(calls) == 2
+    assert calls[0].shutdown_on_done is False
+    assert calls[1].shutdown_on_done is True
+    print("  [ok] balanced context persisting past the warning escalates")
+
+
 def test_strict_first_context_hit_requests_fast_confirmation() -> None:
     import brake.service.watcher as watcher_mod
 
@@ -231,7 +256,8 @@ def test_light_scan_ignores_context_hits() -> None:
         watcher_mod.capture_all_monitors = lambda: Image.new("RGB", (10, 10), "black")
         w = _watcher("light")
         w.detectors = [_Detector(_context_hit())]
-        assert w._scan_once() is None
+        hit, _suspicion = w._scan_once()
+        assert hit is None
     finally:
         watcher_mod.capture_all_monitors = original_capture
     print("  [ok] light scan ignores context hits")
@@ -245,10 +271,13 @@ def test_soft_context_scan_does_not_trigger_warning() -> None:
         watcher_mod.capture_all_monitors = lambda: Image.new("RGB", (10, 10), "black")
         w = _watcher("balanced")
         w.detectors = [_Detector(_soft_context_hit())]
-        assert w._scan_once() is None
+        hit, suspicion = w._scan_once()
+        assert hit is None
+        assert suspicion is not None
+        assert suspicion.severity == "context"
     finally:
         watcher_mod.capture_all_monitors = original_capture
-    print("  [ok] soft context scan does not trigger warning")
+    print("  [ok] soft context scan does not trigger warning but marks suspicion")
 
 
 def test_balanced_hard_first_hit_requests_fast_confirmation() -> None:
@@ -368,6 +397,7 @@ def main() -> int:
         test_balanced_context_spawns_warning_no_shutdown,
         test_balanced_suppresses_second_hit_within_cooldown,
         test_balanced_repeated_context_after_cooldown_escalates_full_lockout,
+        test_balanced_second_context_after_warning_escalates,
         test_strict_first_context_hit_requests_fast_confirmation,
         test_strict_second_context_hit_confirms_full_lockout,
         test_light_scan_ignores_context_hits,
