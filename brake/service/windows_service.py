@@ -28,6 +28,13 @@ SERVICE_DISPLAY = "Brake"
 SERVICE_DESCRIPTION = "Brake state authority and user-session agent supervisor."
 
 
+# One spawn attempt at most per this many seconds.
+SPAWN_BACKOFF_SECONDS = 5.0
+# How long a freshly spawned agent may run without writing agent.pid before
+# we log a diagnostic (slow cold-start imports are normal; minutes are not).
+SPAWN_STARTUP_GRACE_SECONDS = 60.0
+
+
 def _agent_pid_file() -> Path:
     return paths.data_dir() / "agent.pid"
 
@@ -45,6 +52,27 @@ def _agent_running() -> bool:
         return psutil.pid_exists(pid)
     except Exception:
         return False
+
+
+def _process_signature(pid: int):
+    """(pid, create_time) identity tuple, or None when the pid is gone.
+
+    The create time guards against pid reuse: a recycled pid belongs to a
+    different process and must not count as our agent.
+    """
+    try:
+        import psutil
+
+        return (pid, psutil.Process(pid).create_time())
+    except Exception:
+        return None
+
+
+def _spawned_agent_alive(signature) -> bool:
+    if signature is None:
+        return False
+    current = _process_signature(signature[0])
+    return current is not None and abs(current[1] - signature[1]) < 1.0
 
 
 try:
@@ -116,16 +144,33 @@ def _assert_services_auto_start() -> None:
             _log.warning("failed to re-assert auto-start for %s: %s", svc, e)
 
 
-def _agent_supervisor(stop: threading.Event) -> None:
-    """Ensure an agent is running in the active user session.
+def _agent_env() -> dict:
+    """Environment for the spawned agent.
 
-    Throttle: at most one spawn attempt per 3s, even if the spawn appears
-    to have failed (so we don't tight-loop CreateProcessAsUser during the
-    login screen, but a killed agent comes back within a couple seconds).
+    BRAKE_DATA_DIR is pinned to the service's own data dir so the agent can
+    never disagree with the service about where state and agent.pid live.
+    A mismatch here used to cause endless respawns and agents scanning
+    against an empty (unprotected) state directory.
+    """
+    env = dict(module_env() or {})
+    env["BRAKE_DATA_DIR"] = str(paths.data_dir())
+    return env
+
+
+def _agent_supervisor(stop: threading.Event) -> None:
+    """Ensure exactly one agent is running in the active user session.
+
+    The agent enforces single-instance with a session mutex; this loop only
+    avoids useless spawn churn. It never respawns while the process it
+    spawned is still alive (cold-start imports can take many seconds before
+    agent.pid appears), and it backs off between attempts.
     """
     from brake.service.session_launcher import spawn_in_user_session
     last_attempt = 0.0
     last_autostart_check = 0.0
+    spawned_signature = None
+    spawned_at = 0.0
+    slow_start_logged = False
     while not stop.is_set():
         try:
             # Re-assert services are auto-start ~every 60s. Cheap, and
@@ -133,19 +178,40 @@ def _agent_supervisor(stop: threading.Event) -> None:
             if time.time() - last_autostart_check >= 60:
                 last_autostart_check = time.time()
                 _assert_services_auto_start()
-            if not _agent_running():
-                if time.time() - last_attempt >= 3:
-                    last_attempt = time.time()
-                    root = app_dir()
-                    ok, pid = spawn_in_user_session(
-                        agent_command(),
-                        cwd=str(root),
-                        extra_env=module_env(),
+
+            if _agent_running():
+                slow_start_logged = False
+            elif _spawned_agent_alive(spawned_signature):
+                # Our spawn is alive but has not written agent.pid yet
+                # (still importing) or cannot write it. Either way another
+                # spawn would just exit at the agent mutex — don't churn.
+                if (
+                    not slow_start_logged
+                    and time.time() - spawned_at >= SPAWN_STARTUP_GRACE_SECONDS
+                ):
+                    slow_start_logged = True
+                    _log.warning(
+                        "Agent pid=%s alive for %.0fs without agent.pid — "
+                        "check data-dir permissions (%s).",
+                        spawned_signature[0],
+                        time.time() - spawned_at,
+                        _agent_pid_file(),
                     )
-                    if ok:
-                        _log.info("Agent spawned (pid=%s).", pid)
-                    else:
-                        _log.debug("Agent spawn skipped or failed; will retry.")
+            elif time.time() - last_attempt >= SPAWN_BACKOFF_SECONDS:
+                last_attempt = time.time()
+                root = app_dir()
+                ok, pid = spawn_in_user_session(
+                    agent_command(),
+                    cwd=str(root),
+                    extra_env=_agent_env(),
+                )
+                if ok:
+                    spawned_signature = _process_signature(pid)
+                    spawned_at = time.time()
+                    slow_start_logged = False
+                    _log.info("Agent spawned (pid=%s).", pid)
+                else:
+                    _log.debug("Agent spawn skipped or failed; will retry.")
         except Exception as e:
             _log.exception("agent supervisor error: %s", e)
         stop.wait(1)

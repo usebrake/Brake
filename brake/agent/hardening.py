@@ -9,8 +9,9 @@ from __future__ import annotations
 import ctypes
 import logging
 import threading
+import time
 from ctypes import wintypes
-from typing import List
+from typing import List, Optional
 
 from brake.config import load_settings
 from brake.state import StateStore, StateTamperedError
@@ -79,6 +80,8 @@ def _window_title(hwnd: int) -> str:
 class HardeningLoop(threading.Thread):
     daemon = True
 
+    STATE_CACHE_SECONDS = 1.0
+
     def __init__(self, stop_event: threading.Event) -> None:
         super().__init__(name="HardeningLoop")
         self.stop_event = stop_event
@@ -86,13 +89,32 @@ class HardeningLoop(threading.Thread):
         settings = load_settings()
         self.poll_seconds = max(0.05, settings.hardening.poll_interval_ms / 1000.0)
         self.titles = [t.lower() for t in DEFAULT_BLOCK_TITLES]
+        self._protected_cached_at = 0.0
+        self._protected_cache: Optional[bool] = None
 
     def _protected(self) -> bool:
+        # The poll runs ~4x/second; don't read + HMAC-verify the state file
+        # that often. A 1s cache is plenty responsive for window closing.
+        now = time.monotonic()
+        if (
+            self._protected_cache is not None
+            and (now - self._protected_cached_at) < self.STATE_CACHE_SECONDS
+        ):
+            return self._protected_cache
         try:
             s = self.store.load()
+            # Fresh install with no state yet: nothing to protect.
+            value = bool(s and s.enabled)
         except StateTamperedError:
-            return True  # fail-secure: keep hardening on
-        return bool(s and s.enabled)
+            value = True  # fail-secure: keep hardening on
+        except Exception as e:
+            # StateMissingError / corrupt file: fail-secure, and never let a
+            # bad state file kill this thread silently.
+            _log.warning("hardening: state unreadable (%s); fail-secure on.", e)
+            value = True
+        self._protected_cache = value
+        self._protected_cached_at = now
+        return value
 
     def run(self) -> None:
         _log.info("Hardening loop starting (poll=%.2fs, titles=%d).",

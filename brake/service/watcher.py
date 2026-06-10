@@ -112,31 +112,51 @@ class Watcher:
         self._hard_strike_count = 0
         self.scan_environment = ScanEnvironmentMonitor()
         self._state_cached_at = 0.0
-        self._state_cache: Optional[tuple] = None  # (state,) once loaded
+        self._state_cache: Optional[tuple] = None  # (state, fail_secure)
 
-    def _current_state(self):
+    def _load_state(self) -> tuple:
+        """Return (state, fail_secure).
+
+        state is None in two very different situations:
+        - fail_secure False: no state has ever been created (fresh install
+          before first-run setup). There is nothing to protect, so the
+          watcher must NOT capture the screen.
+        - fail_secure True: the state exists but cannot be trusted
+          (tampered, deleted after initialization, or unreadable). Treat
+          protection as enabled so deleting/corrupting files is not an off
+          switch.
+        """
         # The tick loop asks for state several times per second; reading and
         # HMAC-verifying the state file that often is wasted work. A short
         # cache keeps the loop cheap while staying responsive to toggles.
         now = time.monotonic()
         if self._state_cache is not None and (now - self._state_cached_at) < HOUSEKEEPING_SECONDS:
-            return self._state_cache[0]
+            return self._state_cache
         try:
             s = self.store.load()
             if s is not None:
                 s = apply_due_recovery_unlock(self.store, s)
+            result = (s, False)
         except StateTamperedError:
             _log.critical("State tampered. Fail-secure: assume enabled.")
-            s = None
-        self._state_cache = (s,)
+            result = (None, True)
+        except Exception as e:
+            # StateMissingError, corrupt JSON, transient IO errors. Never let
+            # a bad state file crash the loop into a respawn cycle.
+            _log.critical("State unreadable (%s). Fail-secure: assume enabled.", e)
+            result = (None, True)
+        self._state_cache = result
         self._state_cached_at = now
-        return s
+        return result
+
+    def _current_state(self):
+        return self._load_state()[0]
 
     def _state_says_run(self) -> bool:
-        s = self._current_state()
-        if s is None:
-            return True
-        return s.enabled
+        state, fail_secure = self._load_state()
+        if state is not None:
+            return state.enabled
+        return fail_secure
 
     def _current_lockout_duration_seconds(self) -> int:
         if is_test_mode():
@@ -453,13 +473,23 @@ class Watcher:
         last_probation_at = 0.0
         last_window_sig: Optional[tuple] = None
         last_virtual_screen = None
+        was_running = None  # tri-state so the first pass logs either way
 
         while True:
             if not self._state_says_run():
+                if was_running is not False:
+                    was_running = False
+                    _log.info(
+                        "Scanning paused: protection is disabled or not yet "
+                        "set up. No screen capture while paused."
+                    )
                 pending_zoom = None
                 confirm_streak = 0
                 time.sleep(t(3, 1))
                 continue
+            if was_running is not True:
+                was_running = True
+                _log.info("Scanning active: protection is enabled.")
 
             now = time.monotonic()
             if now < self._lockout_until:
@@ -551,5 +581,12 @@ class Watcher:
 
             tick = decision.tick_seconds
             if snapshot is not None and snapshot.share_sensitive:
+                tick = max(tick, 1.0)
+            if snapshot is not None and snapshot.fullscreen:
+                # Fewer captures while a fullscreen surface is up: each grab
+                # is a compositor copy, and a grab landing on the exit
+                # transition is what shows as a flash. Detection is
+                # unaffected; fullscreen video is scanned on the sustained
+                # cadence, which is slower than this tick anyway.
                 tick = max(tick, 1.0)
             time.sleep(tick)

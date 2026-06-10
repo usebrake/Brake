@@ -87,9 +87,11 @@ function backendEnv() {
 
 function startDevAgent() {
   if (!isDev || process.env.BRAKE_NO_DEV_AGENT === "1" || devAgent) return;
+  // --parent-pid: the agent exits if this Electron process dies, so a
+  // force-killed Electron cannot leave an orphaned agent scanning.
   devAgent = spawn(
       pythonExe,
-      ["-m", "brake.agent"],
+      ["-m", "brake.agent", "--parent-pid", String(process.pid)],
       {
         cwd: repoRoot,
         env: backendEnv(),
