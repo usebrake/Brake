@@ -21,13 +21,13 @@ You can also run installer\uninstall.bat from your original downloaded source fo
 
 If protection is on without an active commitment, uninstall requires your password.
 
-If you use the recovery code instead, Brake starts a 10-minute emergency cooldown. After the cooldown finishes, protection turns off and uninstall can continue.
+If you use the recovery code instead, Brake starts a 15-minute emergency cooldown. After the cooldown finishes, protection turns off and uninstall can continue.
 
 ## If commitment is active
 
 Your normal password cannot uninstall during commitment.
 
-The recovery code can start a 10-minute emergency cooldown. When the cooldown finishes, Brake turns protection off and clears the commitment so uninstall can continue.
+The recovery code can start a 15-minute emergency cooldown. When the cooldown finishes, Brake turns protection off and clears the commitment so uninstall can continue.
 
 ## If Windows says a file is in use
 

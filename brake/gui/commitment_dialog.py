@@ -50,7 +50,7 @@ class CommitmentDialog(QDialog):
         intro = QLabel(
             "While a commitment is active, your password cannot turn off "
             "protection. You can still make settings stricter, but not "
-            "looser. The emergency recovery code can start a 10-minute "
+            "looser. The emergency recovery code can start a 15-minute "
             "cooldown before protection turns off."
         )
         intro.setWordWrap(True)

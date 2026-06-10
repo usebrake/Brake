@@ -85,7 +85,7 @@ Helpful docs:
 
 Brake shows a recovery code once on first launch.
 
-The recovery code can reset your password immediately. It can also start a 10-minute emergency cooldown before Brake turns protection off, including during Commitment Mode.
+The recovery code can reset your password immediately. It can also start a 15-minute emergency cooldown before Brake turns protection off, including during Commitment Mode.
 
 Do not store it somewhere easy to reach on the same computer if you want strong commitment. Write it down, take a photo on your phone, or give it to someone you trust.
 

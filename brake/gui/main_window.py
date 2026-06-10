@@ -522,7 +522,7 @@ class MainWindow(QMainWindow):
             return
 
         enabled = bool(st.get("enabled"))
-        duration = int(st.get("lockout_duration_minutes", 3))
+        duration = int(st.get("lockout_duration_minutes", 15))
         commitment_active = bool(st.get("commitment_active", False))
         committed_until = st.get("committed_until")
         sensitivity = str(st.get("detection_sensitivity", "balanced"))
@@ -619,7 +619,7 @@ class MainWindow(QMainWindow):
     def _on_toggle(self) -> None:
         st = self.controller.status()
         enabled = bool(st.get("enabled"))
-        duration = int(st.get("lockout_duration_minutes", 3))
+        duration = int(st.get("lockout_duration_minutes", 15))
 
         if not enabled:
             confirm = QMessageBox.question(
@@ -656,7 +656,7 @@ class MainWindow(QMainWindow):
                 self,
                 APP_NAME,
                 "Recovery code accepted. For safety, protection will turn off "
-                "after a 10-minute emergency cooldown.",
+                "after a 15-minute emergency cooldown.",
             )
         self._refresh()
 

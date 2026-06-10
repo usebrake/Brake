@@ -62,7 +62,7 @@ def _hard_hit(label: str = "EXPLICIT (MALE_GENITALIA_EXPOSED)"):
     return DetectionResult(
         detector="nudity",
         triggered=True,
-        confidence=0.88,
+        confidence=0.80,
         label=label,
         severity="hard",
     )
@@ -93,9 +93,14 @@ def _soft_context_hit(label: str = "CONTEXT NUDITY (BUTTOCKS_EXPOSED)"):
 
 
 def _watcher(sensitivity: str):
+    from brake.incident_memory import IncidentLedger
     from brake.service.watcher import Watcher
 
-    return Watcher(store=_Store(sensitivity))
+    incident_dir = Path(tempfile.mkdtemp(prefix="brake-incidents-"))
+    return Watcher(
+        store=_Store(sensitivity),
+        incidents=IncidentLedger(file_path=incident_dir / "incidents.json", key_path=incident_dir / "state.key"),
+    )
 
 
 def _patch_lockout(watcher_mod):
@@ -181,7 +186,7 @@ def test_balanced_repeated_context_after_cooldown_escalates_full_lockout() -> No
     assert len(calls) == 2
     assert calls[0].shutdown_on_done is False
     assert calls[1].shutdown_on_done is True
-    assert calls[1].duration == 10 * 60
+    assert calls[1].duration == 15 * 60
     print("  [ok] balanced repeated context escalates to full lockout")
 
 
@@ -243,7 +248,7 @@ def test_strict_second_context_hit_confirms_full_lockout() -> None:
         restore_time()
 
     assert len(calls) == 1
-    assert calls[0].duration == 10 * 60
+    assert calls[0].duration == 15 * 60
     assert calls[0].shutdown_on_done is True
     print("  [ok] strict confirmed context triggers full lockout")
 
@@ -329,10 +334,30 @@ def test_very_high_hard_hit_immediately_confirms_lockout() -> None:
         restore_time()
 
     assert len(calls) == 1
-    assert calls[0].duration == 10 * 60
+    assert calls[0].duration == 15 * 60
     assert calls[0].shutdown_on_done is True
     assert w._last_hard_pending_label == ""
     print("  [ok] very high hard hit immediately confirms full lockout")
+
+
+def test_repeated_hard_lockout_in_window_doubles_duration() -> None:
+    import brake.service.watcher as watcher_mod
+
+    calls, original_spawn = _patch_lockout(watcher_mod)
+    restore_time = _patch_monotonic(watcher_mod, [100.0, 101.0])
+    try:
+        w = _watcher("balanced")
+        w._handle_detection(_very_high_hard_hit())
+        w._handle_detection(_very_high_hard_hit())
+    finally:
+        watcher_mod._spawn_lockout = original_spawn
+        restore_time()
+
+    assert len(calls) == 2
+    assert calls[0].duration == 15 * 60
+    assert calls[1].duration == 30 * 60
+    assert all(call.shutdown_on_done for call in calls)
+    print("  [ok] repeated hard lockout in incident window doubles duration")
 
 
 def test_hard_second_hit_confirms_lockout() -> None:
@@ -350,7 +375,7 @@ def test_hard_second_hit_confirms_lockout() -> None:
         restore_time()
 
     assert len(calls) == 1
-    assert calls[0].duration == 10 * 60
+    assert calls[0].duration == 15 * 60
     assert calls[0].shutdown_on_done is True
     print("  [ok] hard second hit confirms full lockout")
 
@@ -369,7 +394,7 @@ def test_hard_second_hit_can_change_label() -> None:
         restore_time()
 
     assert len(calls) == 1
-    assert calls[0].duration == 10 * 60
+    assert calls[0].duration == 15 * 60
     assert calls[0].shutdown_on_done is True
     print("  [ok] hard second hit confirms even when video label changes")
 
@@ -405,6 +430,7 @@ def main() -> int:
         test_balanced_hard_first_hit_requests_fast_confirmation,
         test_light_hard_first_hit_keeps_old_confirmation_flow,
         test_very_high_hard_hit_immediately_confirms_lockout,
+        test_repeated_hard_lockout_in_window_doubles_duration,
         test_hard_second_hit_confirms_lockout,
         test_hard_second_hit_can_change_label,
         test_strict_hard_hit_immediately_full_locks,

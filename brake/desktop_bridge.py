@@ -43,7 +43,7 @@ def _status_payload(controller: Controller) -> dict[str, Any]:
         "enabled": bool(status.get("enabled", False)),
         "commitmentActive": bool(status.get("commitment_active", False)),
         "committedUntil": status.get("committed_until"),
-        "lockoutDurationMinutes": int(status.get("lockout_duration_minutes", 3) or 3),
+        "lockoutDurationMinutes": int(status.get("lockout_duration_minutes", 15) or 15),
         "detectionSensitivity": str(status.get("detection_sensitivity", "balanced") or "balanced"),
         "animeDetectionEnabled": bool(status.get("anime_detection_enabled", False)),
         "animeDetectionMode": str(status.get("anime_detection_mode", "standard") or "standard"),

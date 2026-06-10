@@ -52,6 +52,10 @@ def probation_file() -> Path:
     return data_dir() / "probation.json"
 
 
+def incident_file() -> Path:
+    return data_dir() / "incidents.json"
+
+
 def recovery_file() -> Path:
     return data_dir() / "recovery.json"
 

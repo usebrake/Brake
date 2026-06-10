@@ -112,7 +112,7 @@ def main() -> int:
                 _log.warning("Recovery uninstall requested; emergency unlock scheduled for %s.", unlock_after)
                 _block_with_dialog(
                     "Emergency recovery accepted. For safety, Brake will not uninstall immediately. "
-                    "Protection will turn off after the 10-minute recovery cooldown. "
+                    "Protection will turn off after the 15-minute recovery cooldown. "
                     "Run uninstall again after that cooldown finishes."
                 )
                 return 1

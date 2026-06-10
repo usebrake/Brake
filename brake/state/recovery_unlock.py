@@ -12,7 +12,7 @@ from typing import Optional
 from brake.state.schema import State
 from brake.state.store import StateStore
 
-RECOVERY_UNLOCK_DELAY_SECONDS = 10 * 60
+RECOVERY_UNLOCK_DELAY_SECONDS = 15 * 60
 
 
 def _iso(dt: datetime) -> str:

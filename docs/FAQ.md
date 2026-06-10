@@ -20,7 +20,7 @@ Do not delete `C:\Program Files\Brake` unless you are uninstalling.
 
 ## Why does hard explicit content shut down Windows?
 
-The shutdown makes the consequence harder to ignore. It breaks the session and starts a five-minute strict-watch window after restart.
+The shutdown makes the consequence harder to ignore. It breaks the session, force-closes open apps, and starts a five-minute strict-watch window after restart.
 
 ## What about TV, movies, or accidental nudity?
 

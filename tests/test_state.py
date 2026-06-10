@@ -136,7 +136,7 @@ def test_v1_to_v9_migration(tmp: Path) -> None:
     assert loaded is not None
     assert loaded.schema_version == 9
     assert loaded.enabled is True
-    assert loaded.lockout_duration_minutes == 10
+    assert loaded.lockout_duration_minutes == 15
     assert loaded.committed_until is None
     assert loaded.detection_sensitivity == "balanced"
     assert loaded.anime_detection_enabled is False

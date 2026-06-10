@@ -21,7 +21,7 @@ const fallbackStatus = {
   enabled: false,
   commitmentActive: false,
   committedUntil: null,
-  lockoutDurationMinutes: 10,
+  lockoutDurationMinutes: 15,
   detectionSensitivity: "balanced",
   animeDetectionEnabled: false,
   animeDetectionMode: "standard",
@@ -223,14 +223,14 @@ function PasswordModal({ mode, durationMinutes, commitmentActive, error, onCance
       <form className="password-form" onSubmit={submit}>
         <p>
           {enabling
-            ? "Set the password used to turn protection off. This replaces any previous password on this device."
+            ? "Set the password used to turn protection off. Without a commitment, this password can turn protection off anytime."
             : commitmentActive
-              ? "Commitment is active. Your password cannot turn protection off right now. A recovery code starts a 10-minute emergency cooldown instead."
-              : "Enter your password to turn protection off. A recovery code can also start a 10-minute emergency cooldown."}
+              ? "Commitment is active. Your password cannot turn protection off right now. A recovery code starts a 15-minute emergency cooldown instead."
+              : "Enter your password to turn protection off. A recovery code can also start a 15-minute emergency cooldown."}
         </p>
         {enabling ? (
           <p>
-            Clear explicit content triggers a <strong>{durationMinutes}-minute</strong> lockout, then Windows shuts down. After restart, Brake watches strictly for five minutes. Balanced mode warns on incidental nudity first, then escalates if it keeps happening.
+            Brake watches the screen and reacts; it does not block websites or apps. Clear explicit content triggers a <strong>{durationMinutes}-minute</strong> lockout, then Windows shuts down and force-closes open apps. Save your work often. If illustrated or anime content is a risk, turn that detector on in Advanced.
           </p>
         ) : null}
         <label className="field">
@@ -459,7 +459,7 @@ function RecoveryModal({ token, regenerated = false, onClose }) {
     <Modal title={regenerated ? "New recovery code" : "Save your recovery code"} onClose={onClose}>
       <div className="password-form">
         <p>
-          This code can reset your password immediately. It can also start a 10-minute emergency cooldown before Brake turns off. You will not see this exact code again.
+          This code can reset your password immediately. It can also start a 15-minute emergency cooldown before Brake turns off. You will not see this exact code again.
         </p>
         <p>
           Do not store it somewhere easy to reach on this computer. Write it on paper, take a photo on your phone, or give it to someone you trust. For the strongest commitment, you can choose not to copy it, but a forgotten password may then require a full reset.
@@ -503,14 +503,15 @@ function GuideModal({ tab, status, onClose }) {
         <div className="guide">
           <GuideSection title="What Brake does">
             <p>Brake checks your screen locally. Screenshots are analyzed on this device and are not uploaded, saved, or sent anywhere.</p>
+            <p>Brake watches and reacts; it does not block websites or apps. The goal is to let you use the computer normally while adding consequences when risky content appears.</p>
           </GuideSection>
           <GuideSection title="When protection is on">
-            <p>Clear explicit content triggers the full lockout. Your current lockout length is {duration} {duration === 1 ? "minute" : "minutes"}.</p>
-            <p>When the lockout ends, Windows shuts down. After restart, Brake watches strictly for five minutes so the same content cannot be reopened immediately.</p>
+            <p>Clear explicit content triggers the full lockout. Your current lockout length is {duration} {duration === 1 ? "minute" : "minutes"}. Repeated full lockouts within 24 hours can make the next lockout longer.</p>
+            <p>When the lockout ends, Windows shuts down and force-closes open apps. After restart, Brake watches strictly for five minutes so the same content cannot be reopened immediately.</p>
           </GuideSection>
           <GuideSection title="Commitment">
-            <p>A commitment locks protection in. Your password cannot turn protection off until the commitment ends.</p>
-            <p>During commitment, you can make Brake stricter, but not easier to bypass. The recovery code can reset a forgotten password or start a 10-minute emergency cooldown before protection turns off.</p>
+            <p>Without a commitment, your password can turn protection off anytime. A commitment locks protection in so that password cannot walk it back until the commitment ends.</p>
+            <p>During commitment, you can make Brake stricter, but not easier to bypass. The recovery code can reset a forgotten password or start a 15-minute emergency cooldown before protection turns off.</p>
           </GuideSection>
         </div>
       ) : tab === "detection" ? (
@@ -520,7 +521,7 @@ function GuideModal({ tab, status, onClose }) {
             <p>Exposed genitals or anus are treated as hard explicit content and trigger the full lockout and shutdown flow.</p>
           </GuideSection>
           <GuideSection title="Sensitivity levels">
-            <p><strong>Light:</strong> clear explicit content only. Lowest false-positive rate.</p>
+            <p><strong>Light:</strong> clear explicit content only. Lowest false-positive rate, but weakest protection.</p>
             <p><strong>Balanced:</strong> recommended default. Clear explicit content locks. Nudity gets a short warning first, then repeated nudity escalates to the full lockout.</p>
             <p><strong>Strict:</strong> confirmed nudity triggers the full lockout. Brake uses a fast second scan for partial nudity so one random hit is filtered out.</p>
           </GuideSection>
@@ -532,7 +533,7 @@ function GuideModal({ tab, status, onClose }) {
       ) : (
         <div className="guide">
           <GuideSection title="Illustrated detection">
-            <p>Illustrated detection is optional because it uses a separate local model. Once downloaded, it runs on this device only.</p>
+            <p>Illustrated detection is optional because it uses a separate local model. If illustrated or anime content is a risk for you, turn this on. Once downloaded, it runs on this device only.</p>
             <p>The model classifies illustrated images as normal or NSFW. It does not identify exact body parts like the main photo detector.</p>
           </GuideSection>
           <GuideSection title="Anime modes">
@@ -697,7 +698,7 @@ export default function App() {
         if (mode === "enable") {
           setNotice("Protection is active.");
         } else if (response.data?.recoveryUnlockPending) {
-          setNotice("Recovery code accepted. Protection will turn off after the 10-minute cooldown.");
+          setNotice("Recovery code accepted. Protection will turn off after the 15-minute cooldown.");
         } else {
           setNotice("Protection is off.");
         }

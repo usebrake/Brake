@@ -18,6 +18,7 @@ from brake.detectors.anime_nsfw import AnimeNSFWDetector
 from brake.detectors.base import DetectionResult, Detector
 from brake.detectors.nudity import NudityDetector
 from brake.escalation import ProbationStore, ProbationTamperedError, current_boot_marker
+from brake.incident_memory import IncidentLedger
 from brake.lockout.recovery import active_lockout_exists, spawn_resume_lockout_if_needed
 from brake.runtime import lockout_command
 from brake.service.scan_environment import ScanEnvironmentMonitor
@@ -56,7 +57,7 @@ STRICT_CONFIRM_WINDOW = t(10, 4)
 # Hard explicit video can flicker between labels/frames. A single lower-score
 # genital/anus hit arms a short strike window; a second hard hit confirms.
 HARD_CONFIRM_WINDOW = t(18, 6)
-HARD_IMMEDIATE_CONFIDENCE = 0.90
+HARD_IMMEDIATE_CONFIDENCE = 0.85
 ANIME_STANDARD_CONTEXT_CONFIDENCE = 0.90
 ANIME_STRICT_CONTEXT_CONFIDENCE = 0.86
 ANIME_STRICT_HARD_CONFIDENCE = 0.97
@@ -96,11 +97,12 @@ def _spawn_lockout(
 
 
 class Watcher:
-    def __init__(self, store: Optional[StateStore] = None) -> None:
+    def __init__(self, store: Optional[StateStore] = None, incidents: Optional[IncidentLedger] = None) -> None:
         self.store = store or StateStore()
         self.settings = load_settings()
         self.detectors = _build_detectors(self.settings)
         self.probation = ProbationStore()
+        self.incidents = incidents or IncidentLedger()
         self._lockout_until = 0.0
         self._last_balanced_warning_at = 0.0
         self._last_balanced_context_at = 0.0
@@ -297,6 +299,8 @@ class Watcher:
 
     def _apply_hard_lockout(self, hit: DetectionResult, message: str = FIRST_LOCKOUT_MESSAGE) -> None:
         reason = hit.label or hit.detector.upper()
+        prior_incidents = self.incidents.recent_count()
+        self.incidents.record()
 
         probation_penalty = self._probation_penalty_seconds()
         if probation_penalty is not None:
@@ -310,7 +314,15 @@ class Watcher:
             self._lockout_until = time.monotonic() + probation_penalty
             return
 
-        duration = self._current_lockout_duration_seconds()
+        base_duration = self._current_lockout_duration_seconds()
+        duration = self.incidents.scale(base_duration, prior_incidents)
+        if duration != base_duration:
+            _log.warning(
+                "Incident memory scaled lockout: base=%ds prior=%d duration=%ds",
+                base_duration,
+                prior_incidents,
+                duration,
+            )
         penalty_duration = max(duration, PENALTY_MIN_SECONDS)
         self.probation.create_pending(penalty_duration, reason)
         _spawn_lockout(

@@ -9,7 +9,7 @@ Brake shows it once on first launch. You will not see the same code again.
 The recovery code can:
 
 - reset your protection password immediately
-- start a 10-minute emergency cooldown before Brake turns protection off
+- start a 15-minute emergency cooldown before Brake turns protection off
 - help you recover during an active commitment
 
 ## Why there is a cooldown
