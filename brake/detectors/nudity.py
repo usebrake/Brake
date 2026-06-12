@@ -13,9 +13,24 @@ from brake.detectors.base import Detector, DetectionResult
 _log = logging.getLogger(__name__)
 
 HARD_THRESHOLDS = {
-    "MALE_GENITALIA_EXPOSED": 0.45,
-    "FEMALE_GENITALIA_EXPOSED": 0.45,
-    "ANUS_EXPOSED": 0.50,
+    "MALE_GENITALIA_EXPOSED": 0.55,
+    "FEMALE_GENITALIA_EXPOSED": 0.55,
+    "ANUS_EXPOSED": 0.60,
+}
+# A hard finding below this confidence is only trusted when another exposed
+# body part is detected in the same region (anatomical agreement). Game
+# characters, skin-toned UI, and render noise produce isolated low-score
+# genital boxes; real explicit imagery almost always detects several body
+# parts together or scores high on its own.
+HARD_SOLO_CONFIDENCE = 0.75
+CORROBORATION_MIN_SCORE = 0.45
+CORROBORATION_CLASSES = {
+    "MALE_GENITALIA_EXPOSED",
+    "FEMALE_GENITALIA_EXPOSED",
+    "ANUS_EXPOSED",
+    "FEMALE_BREAST_EXPOSED",
+    "BUTTOCKS_EXPOSED",
+    "BELLY_EXPOSED",
 }
 CONTEXT_THRESHOLDS = {
     "FEMALE_BREAST_EXPOSED": 0.75,
@@ -23,12 +38,18 @@ CONTEXT_THRESHOLDS = {
 }
 CONTEXT_SOFT_THRESHOLD = 0.65
 # Below the hard thresholds but high enough to be worth a fast follow-up scan.
-HARD_SUSPICION_THRESHOLD = 0.35
-# Image-search result grids show many small explicit thumbnails at once. Each
-# one downsamples to a low score, but several simultaneous low-score findings
-# in the same region is strong evidence. Counts findings at or above the
-# suspicion/soft thresholds.
+HARD_SUSPICION_THRESHOLD = 0.45
+# Several simultaneous weak findings in one region (e.g. a thumbnail grid) is
+# worth a zoomed verification pass, but it is NOT proof by itself: busy game
+# frames also produce clusters of weak boxes. The multi rule therefore only
+# raises suspicion; the zoomed pass must find a real trigger.
 MULTI_FINDING_MIN_COUNT = 3
+# Findings with implausible box geometry never trigger on their own. Tiny
+# boxes are icons/specks; extreme aspect ratios are edges and UI slivers.
+# They still count as suspicion so the zoom pass can take a closer look.
+MIN_BOX_AREA_FRACTION = 0.003
+MIN_BOX_ASPECT = 0.25
+MAX_BOX_ASPECT = 4.0
 
 
 Box = Tuple[int, int, int, int]
@@ -176,7 +197,31 @@ class NudityDetector(Detector):
         findings = self._detector.detect(arr)
         for finding in findings:
             finding["_region"] = region_name
+            finding["_region_size"] = image.size
         return findings
+
+    @staticmethod
+    def _geometry_ok(finding: dict) -> bool:
+        """Plausibility check on the detection box.
+
+        Findings without box data (tests, older nudenet) pass by default.
+        """
+        box = finding.get("box")
+        size = finding.get("_region_size")
+        if not box or not size:
+            return True
+        try:
+            w = float(box[2])
+            h = float(box[3])
+            region_w, region_h = float(size[0]), float(size[1])
+        except (IndexError, TypeError, ValueError):
+            return True
+        if w <= 0 or h <= 0 or region_w <= 0 or region_h <= 0:
+            return False
+        if (w * h) / (region_w * region_h) < MIN_BOX_AREA_FRACTION:
+            return False
+        aspect = w / h
+        return MIN_BOX_ASPECT <= aspect <= MAX_BOX_ASPECT
 
     def scan(
         self,
@@ -212,9 +257,6 @@ class NudityDetector(Detector):
         else:
             _log.info("NudeNet findings: none")
 
-        hard_class = ""
-        hard_score = 0.0
-        hard_region = ""
         context_class = ""
         context_score = 0.0
         context_region = ""
@@ -224,14 +266,25 @@ class NudityDetector(Detector):
         hard_suspect_class = ""
         hard_suspect_score = 0.0
         hard_suspect_region = ""
+        hard_candidates: list[tuple[float, str, str]] = []  # (score, class, region)
+        corroboration_counts: dict[str, int] = {}
         region_counts: dict[str, int] = {}
         region_best: dict[str, float] = {}
         for f in findings:
             cls = f.get("class", "")
             score = float(f.get("score", 0.0))
             region = str(f.get("_region", "full"))
+            eligible = self._geometry_ok(f)
             hard_threshold = HARD_THRESHOLDS.get(cls)
             context_threshold = CONTEXT_THRESHOLDS.get(cls)
+
+            if (
+                eligible
+                and cls in CORROBORATION_CLASSES
+                and score >= CORROBORATION_MIN_SCORE
+            ):
+                corroboration_counts[region] = corroboration_counts.get(region, 0) + 1
+
             counts_toward_multi = (
                 (hard_threshold is not None and score >= HARD_SUSPICION_THRESHOLD)
                 or (context_threshold is not None and score >= CONTEXT_SOFT_THRESHOLD)
@@ -241,10 +294,8 @@ class NudityDetector(Detector):
                 region_best[region] = max(region_best.get(region, 0.0), score)
 
             if hard_threshold is not None:
-                if score >= hard_threshold and score > hard_score:
-                    hard_class = cls
-                    hard_score = score
-                    hard_region = region
+                if eligible and score >= hard_threshold:
+                    hard_candidates.append((score, cls, region))
                 elif score >= HARD_SUSPICION_THRESHOLD and score > hard_suspect_score:
                     hard_suspect_class = cls
                     hard_suspect_score = score
@@ -252,7 +303,7 @@ class NudityDetector(Detector):
                 continue
 
             if context_threshold is not None:
-                if score >= context_threshold and score > context_score:
+                if eligible and score >= context_threshold and score > context_score:
                     context_class = cls
                     context_score = score
                     context_region = region
@@ -260,6 +311,24 @@ class NudityDetector(Detector):
                     soft_context_class = cls
                     soft_context_score = score
                     soft_context_region = region
+
+        # A hard candidate triggers only with solo-high confidence or
+        # anatomical agreement (a second exposed-class finding in the same
+        # region). Everything else is demoted to suspicion for the zoom pass.
+        hard_class = ""
+        hard_score = 0.0
+        hard_region = ""
+        for score, cls, region in sorted(hard_candidates, reverse=True):
+            corroborated = corroboration_counts.get(region, 0) >= 2
+            if score >= HARD_SOLO_CONFIDENCE or corroborated:
+                hard_class, hard_score, hard_region = cls, score, region
+                break
+            if score > hard_suspect_score:
+                _log.info(
+                    "hard finding demoted to suspicion (uncorroborated): %s %.2f in %s",
+                    cls, score, region,
+                )
+                hard_suspect_class, hard_suspect_score, hard_suspect_region = cls, score, region
 
         if hard_class:
             return DetectionResult(
@@ -279,21 +348,6 @@ class NudityDetector(Detector):
                 severity="context",
                 region=context_region,
             )
-        multi_region = ""
-        for region, count in region_counts.items():
-            if count >= MULTI_FINDING_MIN_COUNT and (
-                not multi_region or region_best[region] > region_best[multi_region]
-            ):
-                multi_region = region
-        if multi_region:
-            return DetectionResult(
-                detector=self.name,
-                triggered=True,
-                confidence=region_best[multi_region],
-                label=f"CONTEXT NUDITY (MULTIPLE/{multi_region})",
-                severity="context",
-                region=multi_region,
-            )
         # Non-triggered results below are suspicion only: the watcher uses them
         # to schedule a fast zoomed follow-up scan, never to lock.
         if hard_suspect_class:
@@ -304,6 +358,21 @@ class NudityDetector(Detector):
                 label=f"SUSPECT ({hard_suspect_class})",
                 severity="hard",
                 region=hard_suspect_region,
+            )
+        multi_region = ""
+        for region, count in region_counts.items():
+            if count >= MULTI_FINDING_MIN_COUNT and (
+                not multi_region or region_best[region] > region_best[multi_region]
+            ):
+                multi_region = region
+        if multi_region:
+            return DetectionResult(
+                detector=self.name,
+                triggered=False,
+                confidence=region_best[multi_region],
+                label=f"CONTEXT NUDITY (MULTIPLE/{multi_region})",
+                severity="context",
+                region=multi_region,
             )
         if soft_context_class:
             return DetectionResult(

@@ -56,6 +56,30 @@ def _context_hit(label: str = "CONTEXT NUDITY (BUTTOCKS_EXPOSED)"):
     )
 
 
+def _strong_context_hit(label: str = "CONTEXT NUDITY (FEMALE_BREAST_EXPOSED)"):
+    from brake.detectors.base import DetectionResult
+
+    return DetectionResult(
+        detector="nudity",
+        triggered=True,
+        confidence=0.86,
+        label=label,
+        severity="context",
+    )
+
+
+def _anime_context_hit(label: str = "POSSIBLE NSFW ART (full)"):
+    from brake.detectors.base import DetectionResult
+
+    return DetectionResult(
+        detector="anime_nsfw",
+        triggered=True,
+        confidence=0.95,
+        label=label,
+        severity="context",
+    )
+
+
 def _hard_hit(label: str = "EXPLICIT (MALE_GENITALIA_EXPOSED)"):
     from brake.detectors.base import DetectionResult
 
@@ -177,8 +201,8 @@ def test_balanced_repeated_context_after_cooldown_escalates_full_lockout() -> No
     restore_time = _patch_monotonic(watcher_mod, [100.0, 100.0 + watcher_mod.BALANCED_COOLDOWN_SECONDS + 1])
     try:
         w = _watcher("balanced")
-        w._handle_balanced_context(_context_hit())
-        w._handle_balanced_context(_context_hit())
+        w._handle_balanced_context(_strong_context_hit())
+        w._handle_balanced_context(_strong_context_hit())
     finally:
         watcher_mod._spawn_lockout = original_spawn
         restore_time()
@@ -187,7 +211,50 @@ def test_balanced_repeated_context_after_cooldown_escalates_full_lockout() -> No
     assert calls[0].shutdown_on_done is False
     assert calls[1].shutdown_on_done is True
     assert calls[1].duration == 15 * 60
-    print("  [ok] balanced repeated context escalates to full lockout")
+    print("  [ok] balanced repeated strong context escalates to full lockout")
+
+
+def test_balanced_weak_repeat_context_rewarns_instead_of_escalating() -> None:
+    """A persistently misread game/UI screen (borderline scores) must never
+    walk itself into the shutdown lockout. It re-warns at most."""
+    import brake.service.watcher as watcher_mod
+
+    calls, original_spawn = _patch_lockout(watcher_mod)
+    restore_time = _patch_monotonic(watcher_mod, [100.0, 100.0 + watcher_mod.BALANCED_COOLDOWN_SECONDS + 1])
+    try:
+        w = _watcher("balanced")
+        w._handle_balanced_context(_context_hit())  # 0.70 confidence
+        w._handle_balanced_context(_context_hit())
+    finally:
+        watcher_mod._spawn_lockout = original_spawn
+        restore_time()
+
+    assert len(calls) == 2
+    assert calls[0].shutdown_on_done is False
+    assert calls[1].shutdown_on_done is False  # second warning, NOT lockout
+    print("  [ok] weak repeat context re-warns instead of escalating")
+
+
+def test_anime_context_never_starts_shutdown_flow() -> None:
+    """Matches the documented standard-mode behavior: illustrated hits cause
+    a short pause only, regardless of repetition."""
+    import brake.service.watcher as watcher_mod
+
+    calls, original_spawn = _patch_lockout(watcher_mod)
+    restore_time = _patch_monotonic(
+        watcher_mod, [100.0, 100.0 + watcher_mod.BALANCED_COOLDOWN_SECONDS + 1]
+    )
+    try:
+        w = _watcher("balanced")
+        w._handle_detection(_anime_context_hit())
+        w._handle_detection(_anime_context_hit())
+    finally:
+        watcher_mod._spawn_lockout = original_spawn
+        restore_time()
+
+    assert len(calls) == 2
+    assert all(c.shutdown_on_done is False for c in calls)
+    print("  [ok] anime context hits never escalate to shutdown")
 
 
 def test_balanced_second_context_after_warning_escalates() -> None:
@@ -203,8 +270,8 @@ def test_balanced_second_context_after_warning_escalates() -> None:
     restore_time = _patch_monotonic(watcher_mod, [100.0, second_at])
     try:
         w = _watcher("balanced")
-        w._handle_balanced_context(_context_hit())
-        w._handle_balanced_context(_context_hit())
+        w._handle_balanced_context(_strong_context_hit())
+        w._handle_balanced_context(_strong_context_hit())
     finally:
         watcher_mod._spawn_lockout = original_spawn
         restore_time()
@@ -212,7 +279,29 @@ def test_balanced_second_context_after_warning_escalates() -> None:
     assert len(calls) == 2
     assert calls[0].shutdown_on_done is False
     assert calls[1].shutdown_on_done is True
-    print("  [ok] balanced context persisting past the warning escalates")
+    print("  [ok] strong context persisting past the warning escalates")
+
+
+def test_periodic_rescan_cannot_confirm_hard_strike() -> None:
+    """A safety sweep of unchanged pixels must not confirm its own pending
+    strike; only a fresh frame or a zoomed pass may."""
+    import brake.service.watcher as watcher_mod
+
+    calls, original_spawn = _patch_lockout(watcher_mod)
+    restore_time = _patch_monotonic(watcher_mod, [100.0, 102.0, 104.0])
+    try:
+        w = _watcher("balanced")
+        assert w._handle_detection(_hard_hit()) is True       # arms pending
+        w._handle_detection(_hard_hit(), evidential=False)    # periodic rescan
+        assert calls == []                                    # no lockout yet
+        w._handle_detection(_hard_hit(), evidential=True)     # real confirmation
+    finally:
+        watcher_mod._spawn_lockout = original_spawn
+        restore_time()
+
+    assert len(calls) == 1
+    assert calls[0].shutdown_on_done is True
+    print("  [ok] periodic rescans cannot confirm a pending hard strike")
 
 
 def test_strict_first_context_hit_requests_fast_confirmation() -> None:
@@ -422,7 +511,10 @@ def main() -> int:
         test_balanced_context_spawns_warning_no_shutdown,
         test_balanced_suppresses_second_hit_within_cooldown,
         test_balanced_repeated_context_after_cooldown_escalates_full_lockout,
+        test_balanced_weak_repeat_context_rewarns_instead_of_escalating,
+        test_anime_context_never_starts_shutdown_flow,
         test_balanced_second_context_after_warning_escalates,
+        test_periodic_rescan_cannot_confirm_hard_strike,
         test_strict_first_context_hit_requests_fast_confirmation,
         test_strict_second_context_hit_confirms_full_lockout,
         test_light_scan_ignores_context_hits,

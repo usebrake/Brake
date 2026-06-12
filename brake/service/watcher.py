@@ -57,7 +57,14 @@ STRICT_CONFIRM_WINDOW = t(10, 4)
 # Hard explicit video can flicker between labels/frames. A single lower-score
 # genital/anus hit arms a short strike window; a second hard hit confirms.
 HARD_CONFIRM_WINDOW = t(18, 6)
-HARD_IMMEDIATE_CONFIDENCE = 0.85
+# A single uncorroborated frame causing an instant shutdown lockout must be
+# near-certain. Real content below this still locks within ~1s via the
+# strike + zoom confirmation path.
+HARD_IMMEDIATE_CONFIDENCE = 0.90
+# The context strike that escalates a warning into the full shutdown lockout
+# must itself be strong evidence. Weaker repeats re-warn instead, so a
+# persistently misread game/UI screen cannot walk itself into a shutdown.
+CONTEXT_ESCALATION_CONFIDENCE = 0.82
 ANIME_STANDARD_CONTEXT_CONFIDENCE = 0.90
 ANIME_STRICT_CONTEXT_CONFIDENCE = 0.86
 ANIME_STRICT_HARD_CONFIDENCE = 0.97
@@ -221,18 +228,26 @@ class Watcher:
 
         return max(record.penalty_duration_seconds, PENALTY_MIN_SECONDS)
 
-    def _handle_detection(self, hit: DetectionResult) -> bool:
-        """Handle one hit. Return True when a fast confirmation scan should run."""
+    def _handle_detection(self, hit: DetectionResult, *, evidential: bool = True) -> bool:
+        """Handle one hit. Return True when a fast confirmation scan should run.
+
+        ``evidential`` is False for safety-sweep rescans of an unchanged
+        screen: identical pixels re-scored by the same model add no new
+        information, so they may arm pending strikes but never confirm one.
+        """
         if hit.detector == "anime_nsfw" and hit.severity == "context":
-            self._handle_balanced_context(hit)
+            # Documented behavior: illustrated context hits cause a short
+            # pause only and never start the shutdown flow. The classifier
+            # is too coarse on stylized/3D renders to justify escalation.
+            self._handle_balanced_context(hit, allow_escalation=False)
             return False
 
         sensitivity = self._current_sensitivity()
         if hit.severity == "context":
             if sensitivity == "balanced":
-                self._handle_balanced_context(hit)
+                self._handle_balanced_context(hit, evidential=evidential)
             elif sensitivity == "strict":
-                return self._handle_strict_context(hit)
+                return self._handle_strict_context(hit, evidential=evidential)
             else:
                 _log.info("context detection ignored in light mode: label=%s", hit.label)
             return False
@@ -245,7 +260,9 @@ class Watcher:
             )
             self._apply_hard_lockout(hit, message=STRICT_LOCKOUT_MESSAGE)
             return False
-        return self._handle_hard(hit, fast_confirm=(sensitivity == "balanced"))
+        return self._handle_hard(
+            hit, fast_confirm=(sensitivity == "balanced"), evidential=evidential
+        )
 
     def _apply_anime_mode(self, result: DetectionResult) -> DetectionResult:
         if result.detector != "anime_nsfw" or not result.triggered:
@@ -265,16 +282,23 @@ class Watcher:
             )
         return result
 
-    def _handle_hard(self, hit: DetectionResult, *, fast_confirm: bool = False) -> bool:
+    def _handle_hard(
+        self, hit: DetectionResult, *, fast_confirm: bool = False, evidential: bool = True
+    ) -> bool:
         now = time.monotonic()
         label = hit.label or hit.detector.upper()
-        if hit.confidence >= HARD_IMMEDIATE_CONFIDENCE:
+        if hit.confidence >= HARD_IMMEDIATE_CONFIDENCE and evidential:
             self._last_hard_pending_label = ""
             self._last_hard_pending_at = 0.0
             self._hard_strike_count = 0
             _log.warning("hard detection immediately confirmed: label=%s conf=%.2f", label, hit.confidence)
             self._apply_hard_lockout(hit)
             return False
+        if not evidential and self._hard_strike_count >= 1:
+            # Safety-sweep rescan of unchanged pixels: keep the pending strike
+            # alive conceptually but do not let identical input confirm itself.
+            _log.info("hard hit on unchanged screen not counted as confirmation: label=%s", label)
+            return bool(fast_confirm)
         if (
             (now - self._last_hard_pending_at) <= HARD_CONFIRM_WINDOW
             and self._hard_strike_count >= 1
@@ -333,7 +357,13 @@ class Watcher:
         )
         self._lockout_until = time.monotonic() + duration
 
-    def _handle_balanced_context(self, hit: DetectionResult) -> None:
+    def _handle_balanced_context(
+        self,
+        hit: DetectionResult,
+        *,
+        evidential: bool = True,
+        allow_escalation: bool = True,
+    ) -> None:
         now = time.monotonic()
         if (now - self._last_balanced_context_at) > BALANCED_ESCALATION_WINDOW:
             self._balanced_context_strike_count = 0
@@ -344,13 +374,37 @@ class Watcher:
             _log.info("balanced context ignored while warning active: label=%s", hit.label)
             return
 
-        self._balanced_context_strike_count += 1
+        self._balanced_context_strike_count = min(
+            self._balanced_context_strike_count + 1,
+            BALANCED_CONTEXT_STRIKES_TO_LOCKOUT,
+        )
         self._last_balanced_context_at = now
         if self._balanced_context_strike_count >= BALANCED_CONTEXT_STRIKES_TO_LOCKOUT:
-            self._balanced_context_strike_count = 0
-            _log.warning("balanced context escalated to full lockout: label=%s", hit.label)
-            self._apply_hard_lockout(hit)
-            return
+            # Escalating a warning into the full shutdown lockout requires the
+            # repeat strike itself to be strong, fresh evidence. A weak repeat
+            # (borderline score, or a rescan of unchanged pixels) re-warns
+            # instead, so a misread game or UI screen cannot escalate itself.
+            qualifies = (
+                allow_escalation
+                and evidential
+                and (
+                    hit.severity == "hard"
+                    or hit.confidence >= CONTEXT_ESCALATION_CONFIDENCE
+                )
+            )
+            if qualifies:
+                self._balanced_context_strike_count = 0
+                _log.warning("balanced context escalated to full lockout: label=%s", hit.label)
+                self._apply_hard_lockout(hit)
+                return
+            _log.info(
+                "balanced context escalation deferred: label=%s conf=%.2f "
+                "evidential=%s allow_escalation=%s",
+                hit.label,
+                hit.confidence,
+                evidential,
+                allow_escalation,
+            )
 
         if (
             self._last_balanced_warning_at > 0
@@ -372,11 +426,12 @@ class Watcher:
         )
         self._lockout_until = now + BALANCED_WARNING_SECONDS
 
-    def _handle_strict_context(self, hit: DetectionResult) -> bool:
+    def _handle_strict_context(self, hit: DetectionResult, *, evidential: bool = True) -> bool:
         now = time.monotonic()
         label = hit.label or hit.detector.upper()
         if (
-            (now - self._last_strict_pending_at) <= STRICT_CONFIRM_WINDOW
+            evidential
+            and (now - self._last_strict_pending_at) <= STRICT_CONFIRM_WINDOW
             and label == self._last_strict_pending_label
         ):
             self._last_strict_pending_label = ""
@@ -384,8 +439,9 @@ class Watcher:
             _log.warning("strict context confirmed as full lockout: label=%s", label)
             self._apply_hard_lockout(hit, message=STRICT_LOCKOUT_MESSAGE)
             return False
-        self._last_strict_pending_label = label
-        self._last_strict_pending_at = now
+        if evidential or not self._last_strict_pending_label:
+            self._last_strict_pending_label = label
+            self._last_strict_pending_at = now
         _log.info("strict: pending fast confirmation for %s", label)
         return True
 
@@ -566,7 +622,11 @@ class Watcher:
                 wants_confirm = False
                 confirm_region = ""
                 if hit:
-                    wants_confirm = self._handle_detection(hit)
+                    # Periodic safety sweeps re-scan unchanged pixels; they
+                    # may arm strikes/warnings but never confirm a lockout.
+                    wants_confirm = self._handle_detection(
+                        hit, evidential=(decision.reason != "periodic")
+                    )
                     confirm_region = hit.region
                 elif suspicion is not None and self._current_sensitivity() in ("balanced", "strict"):
                     # Something landed below the trigger thresholds. Zoom into

@@ -33,16 +33,40 @@ def _detector(findings: list[dict]) -> NudityDetector:
 _IMG = Image.new("RGB", (100, 100), "black")
 
 
-def test_hard_hit_above_threshold_triggers_hard() -> None:
-    det = _detector([{"class": "MALE_GENITALIA_EXPOSED", "score": 0.60}])
+def test_solo_high_confidence_hard_triggers() -> None:
+    det = _detector([{"class": "MALE_GENITALIA_EXPOSED", "score": 0.80}])
     res = det.scan(_IMG)
     assert res.triggered is True
     assert res.severity == "hard"
-    print("  [ok] hard class above threshold triggers hard")
+    print("  [ok] solo high-confidence hard finding triggers")
+
+
+def test_uncorroborated_mid_hard_is_demoted_to_suspicion() -> None:
+    # 0.60 genitalia alone (no other body part anywhere): exactly the kind of
+    # isolated box a game character produces. Must not trigger.
+    det = _detector([{"class": "MALE_GENITALIA_EXPOSED", "score": 0.60}])
+    res = det.scan(_IMG)
+    assert res.triggered is False
+    assert res.severity == "hard"
+    assert "SUSPECT" in res.label
+    print("  [ok] uncorroborated mid-confidence hard finding only raises suspicion")
+
+
+def test_corroborated_mid_hard_triggers() -> None:
+    # Same 0.60 genitalia, but with a second exposed body part in the same
+    # region: anatomical agreement makes it trustworthy.
+    det = _detector([
+        {"class": "MALE_GENITALIA_EXPOSED", "score": 0.60},
+        {"class": "BUTTOCKS_EXPOSED", "score": 0.50},
+    ])
+    res = det.scan(_IMG)
+    assert res.triggered is True
+    assert res.severity == "hard"
+    print("  [ok] corroborated mid-confidence hard finding triggers")
 
 
 def test_hard_near_miss_reports_suspicion_only() -> None:
-    det = _detector([{"class": "MALE_GENITALIA_EXPOSED", "score": 0.40}])
+    det = _detector([{"class": "MALE_GENITALIA_EXPOSED", "score": 0.50}])
     res = det.scan(_IMG)
     assert res.triggered is False
     assert res.severity == "hard"
@@ -51,11 +75,53 @@ def test_hard_near_miss_reports_suspicion_only() -> None:
 
 
 def test_hard_score_below_suspicion_band_is_negative() -> None:
-    det = _detector([{"class": "MALE_GENITALIA_EXPOSED", "score": 0.20}])
+    det = _detector([{"class": "MALE_GENITALIA_EXPOSED", "score": 0.40}])
     res = det.scan(_IMG)
     assert res.triggered is False
     assert res.severity == "none"
     print("  [ok] low hard score stays fully negative")
+
+
+def test_tiny_box_cannot_trigger() -> None:
+    # 5x5 box on a 100x100 region (0.25% area): icon/speck noise.
+    det = _detector([
+        {"class": "FEMALE_GENITALIA_EXPOSED", "score": 0.85, "box": [10, 10, 5, 5]},
+    ])
+    res = det.scan(_IMG)
+    assert res.triggered is False
+    assert res.severity == "hard"  # still suspicion, so zoom can verify
+    print("  [ok] tiny boxes never trigger, only raise suspicion")
+
+
+def test_extreme_aspect_box_cannot_trigger() -> None:
+    det = _detector([
+        {"class": "FEMALE_GENITALIA_EXPOSED", "score": 0.85, "box": [0, 40, 60, 4]},
+    ])
+    res = det.scan(_IMG)
+    assert res.triggered is False
+    print("  [ok] edge/sliver boxes never trigger")
+
+
+def test_plausible_box_still_triggers() -> None:
+    det = _detector([
+        {"class": "FEMALE_GENITALIA_EXPOSED", "score": 0.85, "box": [20, 20, 30, 40]},
+    ])
+    res = det.scan(_IMG)
+    assert res.triggered is True
+    print("  [ok] plausible boxes trigger normally")
+
+
+def test_game_frame_cluster_only_raises_suspicion() -> None:
+    # A busy game lobby: several weak skin-tone boxes, small or borderline,
+    # plus one mid-score buttocks on a character model. No trigger allowed.
+    det = _detector([
+        {"class": "FEMALE_GENITALIA_EXPOSED", "score": 0.48, "box": [5, 5, 6, 6]},
+        {"class": "MALE_GENITALIA_EXPOSED", "score": 0.52, "box": [60, 60, 5, 7]},
+        {"class": "BUTTOCKS_EXPOSED", "score": 0.66, "box": [30, 30, 25, 30]},
+    ])
+    res = det.scan(_IMG)
+    assert res.triggered is False
+    print("  [ok] game-like cluster of weak findings cannot trigger")
 
 
 def test_soft_context_reports_suspicion_only() -> None:
@@ -76,33 +142,33 @@ def test_two_soft_findings_do_not_trigger_multiple_rule() -> None:
     print("  [ok] two soft findings stay below the multiple-findings rule")
 
 
-def test_three_soft_findings_in_one_region_trigger_context() -> None:
+def test_three_soft_findings_raise_multi_suspicion_not_trigger() -> None:
+    # Several simultaneous weak findings warrant a zoomed verification pass,
+    # but never a direct trigger: game frames produce the same pattern.
     det = _detector([
         {"class": "FEMALE_BREAST_EXPOSED", "score": 0.66},
         {"class": "FEMALE_BREAST_EXPOSED", "score": 0.68},
         {"class": "BUTTOCKS_EXPOSED", "score": 0.70},
     ])
     res = det.scan(_IMG)
-    assert res.triggered is True
+    assert res.triggered is False
     assert res.severity == "context"
     assert "MULTIPLE" in res.label
-    assert abs(res.confidence - 0.70) < 1e-9
-    print("  [ok] three soft findings in one region trigger context")
+    print("  [ok] multiple weak findings raise suspicion, never trigger")
 
 
-def test_mixed_hard_suspicion_findings_trigger_multiple_rule() -> None:
-    # An image-search grid: several small explicit thumbnails, each scoring
-    # below the per-class hard thresholds.
+def test_mixed_weak_grid_raises_suspicion_only() -> None:
+    # An image-search grid: small thumbnails scoring below the per-class
+    # thresholds. The zoom pass must do the confirming.
     det = _detector([
-        {"class": "FEMALE_GENITALIA_EXPOSED", "score": 0.38},
-        {"class": "MALE_GENITALIA_EXPOSED", "score": 0.41},
+        {"class": "FEMALE_GENITALIA_EXPOSED", "score": 0.48},
+        {"class": "MALE_GENITALIA_EXPOSED", "score": 0.50},
         {"class": "FEMALE_BREAST_EXPOSED", "score": 0.67},
     ])
     res = det.scan(_IMG)
-    assert res.triggered is True
-    assert res.severity == "context"
-    assert "MULTIPLE" in res.label
-    print("  [ok] grid of sub-threshold explicit findings triggers context")
+    assert res.triggered is False
+    assert res.severity in ("hard", "context")
+    print("  [ok] weak thumbnail grid arms the zoom pass without triggering")
 
 
 def test_findings_spread_across_regions_do_not_combine() -> None:
@@ -195,13 +261,19 @@ def test_result_reports_winning_region() -> None:
 
 def main() -> int:
     tests = [
-        test_hard_hit_above_threshold_triggers_hard,
+        test_solo_high_confidence_hard_triggers,
+        test_uncorroborated_mid_hard_is_demoted_to_suspicion,
+        test_corroborated_mid_hard_triggers,
         test_hard_near_miss_reports_suspicion_only,
         test_hard_score_below_suspicion_band_is_negative,
+        test_tiny_box_cannot_trigger,
+        test_extreme_aspect_box_cannot_trigger,
+        test_plausible_box_still_triggers,
+        test_game_frame_cluster_only_raises_suspicion,
         test_soft_context_reports_suspicion_only,
         test_two_soft_findings_do_not_trigger_multiple_rule,
-        test_three_soft_findings_in_one_region_trigger_context,
-        test_mixed_hard_suspicion_findings_trigger_multiple_rule,
+        test_three_soft_findings_raise_multi_suspicion_not_trigger,
+        test_mixed_weak_grid_raises_suspicion_only,
         test_findings_spread_across_regions_do_not_combine,
         test_full_profile_scans_seven_regions,
         test_targeted_profile_scans_two_regions,
