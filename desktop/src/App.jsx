@@ -97,7 +97,7 @@ function animeStatusCopy(status) {
   return labels[status] || "Not installed";
 }
 
-function StatusPanel({ status, now }) {
+function StatusPanel({ status, now, onToggleProtection }) {
   const committed = status.commitmentActive;
   const enabled = status.enabled;
   const recoveryLeft = status.recoveryUnlockPending ? formatRecoveryUnlockLeft(status.recoveryUnlockAfter, now) : "";
@@ -107,13 +107,19 @@ function StatusPanel({ status, now }) {
   return (
     <section className={`status-panel ${state}`}>
       <div className="status-rail" />
-      <div className="status-icon">
+      <button
+        className="status-icon status-toggle"
+        type="button"
+        aria-label={enabled ? "Turn off protection" : "Turn on protection"}
+        title={enabled ? "Turn off protection" : "Turn on protection"}
+        onClick={onToggleProtection}
+      >
         {enabled || committed ? (
           <ShieldCheck size={28} />
         ) : (
           <Power size={27} />
         )}
-      </div>
+      </button>
       <div className="status-copy">
         <div className="eyebrow">{recoveryLeft ? "RECOVERY COOLDOWN" : committed ? "COMMITTED" : enabled ? "PROTECTED" : "OFF"}</div>
         <h2>{recoveryLeft ? "Emergency unlock pending" : committed ? "Commitment active" : enabled ? "Protection is active" : "Protection is off"}</h2>
@@ -1008,7 +1014,7 @@ export default function App() {
           <BrakeMark tone={protectedTone} />
           <div>
             <div className="brand-name">Brake</div>
-            <div className="brand-subtitle">Private by default. Firm when it counts.</div>
+            <div className="brand-subtitle">Local screen accountability.</div>
           </div>
         </div>
       </header>
@@ -1033,7 +1039,7 @@ export default function App() {
               <p>Brake checks locally and steps in when explicit content appears.</p>
               {notice ? <p className="notice">{notice}</p> : null}
             </div>
-            <StatusPanel status={status} now={now} />
+            <StatusPanel status={status} now={now} onToggleProtection={toggleProtection} />
             <div className="overview-single">
               <Card icon={Clock} title="Session controls" subtitle="Choose what happens when protection is running.">
                 <SettingRow

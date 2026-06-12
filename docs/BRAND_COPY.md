@@ -6,7 +6,7 @@ Brake adds a private, local pause between impulse and action.
 
 ## Primary tagline
 
-Private by default. Firm when it counts.
+Local screen accountability.
 
 ## Alternate lines
 

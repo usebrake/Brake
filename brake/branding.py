@@ -5,6 +5,6 @@ shortcuts, dialogs, and docs should read from these constants where practical.
 """
 
 APP_NAME = "Brake"
-APP_TAGLINE = "Private by default. Firm when it counts."
+APP_TAGLINE = "Local screen accountability."
 APP_USER_MODEL_ID = "com.brakeapp.gui"
 SINGLE_INSTANCE_SERVER = "brake-gui-single-instance"

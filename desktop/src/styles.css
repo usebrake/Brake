@@ -283,8 +283,24 @@ button {
   height: 56px;
   flex: 0 0 56px;
   color: var(--fg-3);
+  background: transparent;
   border: 2px solid var(--border-strong);
   border-radius: 50%;
+}
+
+.status-toggle {
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease, background 120ms ease, transform 120ms ease;
+}
+
+.status-toggle:hover {
+  color: var(--fg-1);
+  background: rgba(243, 240, 230, 0.04);
+  border-color: var(--fg-3);
+}
+
+.status-toggle:active {
+  transform: scale(0.98);
 }
 
 .status-panel.protected .status-icon {

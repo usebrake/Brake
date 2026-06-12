@@ -1,6 +1,6 @@
 # Brake
 
-**Private by default. Firm when it counts.**
+**Local screen accountability for Windows.**
 
 Brake is a free source-available Windows beta for local screen accountability. It checks your screen locally, detects explicit content, and triggers lockouts designed to interrupt the session before it becomes automatic.
 

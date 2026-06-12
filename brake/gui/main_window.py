@@ -339,7 +339,7 @@ class MainWindow(QMainWindow):
         )
         local.setObjectName("BodyText")
         local.setWordWrap(True)
-        layout.addWidget(self._settings_row("Private by default", "", local))
+        layout.addWidget(self._settings_row("Local only", "", local))
 
         action = QLabel(
             "Clear explicit content triggers a lockout. Incidental nudity is handled more gently."

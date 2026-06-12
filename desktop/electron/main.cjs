@@ -12,6 +12,14 @@ let tray = null;
 let devAgent = null;
 let isQuitting = false;
 
+if (!app.requestSingleInstanceLock()) {
+  app.exit(0);
+}
+
+app.on("second-instance", () => {
+  showWindow();
+});
+
 function appIcon() {
   const base = path.join(__dirname, "../src/assets");
   const image = nativeImage.createFromPath(path.join(base, "brake-ring-256.png"));
