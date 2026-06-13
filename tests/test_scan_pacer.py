@@ -68,11 +68,62 @@ def test_settle_scan_after_change_stops() -> None:
     pacer = FramePacer()
     pacer.observe(_frame(), now=100.0)
     pacer.observe(_frame(), now=105.0)
-    pacer.observe(_frame((100, 100, 400, 300)), now=105.4)   # burst scan
-    d = pacer.observe(_frame((100, 100, 400, 300)), now=105.8)  # now static
+    d = pacer.observe(_frame((100, 100, 400, 300)), now=105.4)   # burst scan
+    assert d.scan is True and d.reason == "burst"
+    # More change after the burst (scroll continues), no scan yet.
+    pacer.observe(_frame((300, 100, 700, 350)), now=105.8)
+    d = pacer.observe(_frame((300, 100, 700, 350)), now=106.2)   # now static
     assert d.scan is True
     assert d.reason == "settle"
+    assert d.changed_box is not None  # carries the change since last scan
     print("  [ok] settled frame is scanned right after change stops")
+
+
+def test_settle_skipped_when_frame_already_scanned() -> None:
+    # The burst scanned the exact frame the screen settled on: a settle
+    # re-scan of identical pixels is wasted inference and is skipped.
+    pacer = FramePacer()
+    pacer.observe(_frame(), now=100.0)
+    pacer.observe(_frame(), now=105.0)
+    d = pacer.observe(_frame((100, 100, 400, 300)), now=105.4)   # burst scan
+    assert d.scan is True
+    d = pacer.observe(_frame((100, 100, 400, 300)), now=105.8)   # static, same frame
+    assert d.scan is False
+    print("  [ok] settle skipped when the settled frame was already scanned")
+
+
+def test_burst_uses_targeted_sweep() -> None:
+    pacer = FramePacer()
+    pacer.observe(_frame(), now=100.0)
+    pacer.observe(_frame(), now=105.0)
+    d = pacer.observe(_frame((100, 100, 400, 300)), now=105.4)
+    assert d.scan is True and d.reason == "burst"
+    assert d.sweep == "targeted"
+    print("  [ok] burst scans run the cheap targeted profile")
+
+
+def test_accumulated_change_carries_across_skipped_ticks() -> None:
+    pacer = FramePacer()
+    pacer.observe(_frame(), now=100.0)
+    pacer.observe(_frame(), now=105.0)
+    pacer.observe(_frame((50, 50, 200, 200)), now=105.4)        # burst scan, accum reset
+    pacer.observe(_frame((500, 250, 750, 420)), now=105.8)      # change, no scan
+    d = pacer.observe(_frame((500, 250, 750, 420)), now=106.2)  # settle scan
+    assert d.scan is True
+    left, top, right, bottom = d.changed_box
+    assert left <= 625 <= right and top <= 335 <= bottom  # right-area center
+    print("  [ok] change accumulated across skipped ticks reaches the next scan")
+
+
+def test_power_saver_stretches_repeat_cadences() -> None:
+    pacer = FramePacer(sustained_scan_seconds=2.0)
+    pacer.power_saver = True
+    pacer.observe(_frame(), now=100.0)
+    d = pacer.observe(_frame(), now=100.5)
+    assert abs(d.tick_seconds - 0.6) < 1e-9  # active tick 0.4 * 1.5
+    d = pacer.observe(_frame(), now=100.0 + IDLE_AFTER_SECONDS + 1.0)
+    assert abs(d.tick_seconds - 1.5) < 1e-9  # idle tick 1.0 * 1.5
+    print("  [ok] power saver stretches tick cadences 1.5x")
 
 
 def test_sustained_change_uses_budgeted_targeted_cadence() -> None:
@@ -136,6 +187,10 @@ def main() -> int:
         test_static_screen_skips_inference_until_safety_sweep,
         test_change_burst_scans_at_once_with_changed_box,
         test_settle_scan_after_change_stops,
+        test_settle_skipped_when_frame_already_scanned,
+        test_burst_uses_targeted_sweep,
+        test_accumulated_change_carries_across_skipped_ticks,
+        test_power_saver_stretches_repeat_cadences,
         test_sustained_change_uses_budgeted_targeted_cadence,
         test_idle_screen_slows_ticks,
         test_forced_confirm_scan_is_targeted,

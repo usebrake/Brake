@@ -231,12 +231,24 @@ def test_targeted_profile_scans_two_regions() -> None:
     print("  [ok] targeted profile scans only full + video_center")
 
 
-def test_changed_box_adds_one_region() -> None:
+def test_changed_box_adds_crop_and_filters_unchanged_tiles() -> None:
     det, fake = _counting_detector()
     det.scan(_BIG, changed_box=(100, 100, 500, 450))
-    assert fake.calls == 8, fake.calls
+    # full + the 4 tiles intersecting the change + the changed crop. The
+    # top_right and bottom_right tiles are unchanged pixels and are skipped.
+    assert fake.calls == 6, fake.calls
     assert "changed" in det._last_boxes
-    print("  [ok] changed-area hint adds a dedicated crop")
+    assert "top_right" not in det._last_boxes
+    assert "bottom_right" not in det._last_boxes
+    print("  [ok] changed-area crop added; unchanged tiles skipped")
+
+
+def test_small_corner_change_scans_few_regions() -> None:
+    det, fake = _counting_detector()
+    det.scan(_BIG, changed_box=(20, 20, 250, 220))
+    # full + top_left + video_center (overlaps after padding) + changed.
+    assert fake.calls <= 4, fake.calls
+    print("  [ok] small corner change costs a fraction of a full sweep")
 
 
 def test_zoom_region_adds_subquadrants_and_chains() -> None:
@@ -277,7 +289,8 @@ def main() -> int:
         test_findings_spread_across_regions_do_not_combine,
         test_full_profile_scans_seven_regions,
         test_targeted_profile_scans_two_regions,
-        test_changed_box_adds_one_region,
+        test_changed_box_adds_crop_and_filters_unchanged_tiles,
+        test_small_corner_change_scans_few_regions,
         test_zoom_region_adds_subquadrants_and_chains,
         test_result_reports_winning_region,
     ]

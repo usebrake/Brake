@@ -78,7 +78,34 @@ class NudityDetector(Detector):
             return
         from nudenet import NudeDetector  # lazy import
         _log.info("Loading NudeNet ONNX model (one-time)...")
-        self._detector = NudeDetector()
+        # Cap ONNX intra-op threads while building the session. The 320px
+        # model gains almost nothing from wide parallelism (measured: 240ms
+        # vs 245ms per sweep) but unlimited threads burn ~3.5x the CPU time
+        # and battery. Two threads is the efficiency sweet spot.
+        ort = None
+        original_session = None
+        try:
+            import onnxruntime as ort_module
+
+            ort = ort_module
+            options = ort.SessionOptions()
+            options.intra_op_num_threads = 2
+            options.inter_op_num_threads = 1
+            original_session = ort.InferenceSession
+
+            def _capped_session(*args, **kwargs):
+                if len(args) <= 1 and "sess_options" not in kwargs:
+                    kwargs["sess_options"] = options
+                return original_session(*args, **kwargs)
+
+            ort.InferenceSession = _capped_session
+        except Exception as e:
+            _log.warning("could not cap ONNX threads (%s); using defaults.", e)
+        try:
+            self._detector = NudeDetector()
+        finally:
+            if ort is not None and original_session is not None:
+                ort.InferenceSession = original_session
         _log.info("NudeNet ready.")
 
     def _region_boxes(
@@ -91,6 +118,10 @@ class NudityDetector(Detector):
         width, height = size
         boxes: list[tuple[str, Box]] = [("full", (0, 0, width, height))]
         tileable = min(width, height) >= 500
+
+        clamped = None
+        if changed_box is not None:
+            clamped = self._pad_and_clamp(changed_box, size)
 
         if tileable:
             half_w = max(1, width // 2)
@@ -110,7 +141,7 @@ class NudityDetector(Detector):
                 # capture, a video/image that does not fill the whole monitor
                 # can be downsampled until explicit parts vanish. Scan
                 # overlapping tiles as well.
-                boxes.extend([
+                tiles = [
                     ("top_left", (0, 0, half_w, half_h)),
                     ("top_right", (width - half_w, 0, width, half_h)),
                     ("bottom_left", (0, height - half_h, half_w, height)),
@@ -122,12 +153,18 @@ class NudityDetector(Detector):
                         min(width, (width + half_w) // 2),
                         min(height, (height + half_h) // 2),
                     )),
-                ])
+                ]
+                if clamped is not None:
+                    # When we know where the screen changed, unchanged tiles
+                    # carry the same pixels they had at the last sweep and
+                    # would return the same verdict. Skipping them saves most
+                    # of the inference cost; the periodic safety sweep (no
+                    # changed box) still covers everything.
+                    tiles = [t for t in tiles if self._boxes_intersect(t[1], clamped)]
+                boxes.extend(tiles)
 
-        if changed_box is not None:
-            clamped = self._pad_and_clamp(changed_box, size)
-            if clamped is not None:
-                boxes.append(("changed", clamped))
+        if clamped is not None:
+            boxes.append(("changed", clamped))
 
         if zoom_region:
             parent = self._last_boxes.get(zoom_region)
@@ -139,6 +176,10 @@ class NudityDetector(Detector):
                 boxes.extend(self._quadrants(zoom_region, parent))
 
         return boxes
+
+    @staticmethod
+    def _boxes_intersect(a: Box, b: Box) -> bool:
+        return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
 
     @staticmethod
     def _pad_and_clamp(box: Box, size: Tuple[int, int]) -> Optional[Box]:

@@ -38,7 +38,9 @@ class HardeningConfig:
     block_taskmgr: bool = True
     block_appwiz: bool = True
     block_timedate: bool = True
-    poll_interval_ms: int = 250
+    # 500ms keeps blocked windows closing fast while halving the wakeup rate
+    # (frequent timer wakeups are a real battery cost on laptops).
+    poll_interval_ms: int = 500
 
 
 @dataclass

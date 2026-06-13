@@ -116,6 +116,15 @@ class AnimeNSFWDetector(Detector):
             _log.info("anime_nsfw detector: model is not installed; skipping.")
             return False
         try:
+            # Cap torch threads: this classifier is the heaviest model in the
+            # pipeline, and unbounded threading burns far more CPU/battery
+            # than the wall-time it saves on a single 224px classification.
+            import torch  # type: ignore[import-not-found]
+
+            torch.set_num_threads(2)
+        except Exception:
+            pass
+        try:
             _log.info("Loading %s from %s...", MODEL_NAME, model_dir())
             self._pipeline = pipeline("image-classification", model=str(model_dir()))
             _log.info("anime_nsfw detector ready.")

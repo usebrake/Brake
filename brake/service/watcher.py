@@ -49,6 +49,8 @@ FAST_RESCAN_MAX_STREAK = 2
 # How often slow housekeeping (state file read, probation check) runs. The
 # tick loop itself is much faster than this.
 HOUSEKEEPING_SECONDS = 2.0
+# How often the battery state is re-checked to toggle power-saver pacing.
+POWER_CHECK_SECONDS = 30.0
 BALANCED_WARNING_SECONDS = t(10, 3)
 BALANCED_COOLDOWN_SECONDS = t(60, 8)
 BALANCED_ESCALATION_WINDOW = t(5 * 60, 30)
@@ -83,6 +85,16 @@ def _build_detectors(settings: Settings) -> List[Detector]:
         NudityDetector(settings.nudity),
         AnimeNSFWDetector(settings.nudity),
     ]
+
+
+def _running_on_battery() -> bool:
+    try:
+        import psutil
+
+        battery = psutil.sensors_battery()
+        return bool(battery and not battery.power_plugged)
+    except Exception:
+        return False
 
 
 def _spawn_lockout(
@@ -539,6 +551,7 @@ class Watcher:
         pending_zoom: Optional[str] = None  # region to zoom-confirm next tick
         confirm_streak = 0
         last_probation_at = 0.0
+        last_power_check_at = 0.0
         last_window_sig: Optional[tuple] = None
         last_virtual_screen = None
         was_running = None  # tri-state so the first pass logs either way
@@ -569,6 +582,17 @@ class Watcher:
             if now - last_probation_at >= HOUSEKEEPING_SECONDS:
                 last_probation_at = now
                 self._probation_penalty_seconds()
+
+            if now - last_power_check_at >= POWER_CHECK_SECONDS:
+                last_power_check_at = now
+                on_battery = _running_on_battery()
+                if on_battery != pacer.power_saver:
+                    pacer.power_saver = on_battery
+                    _log.info(
+                        "power profile: %s (repeat cadences %s)",
+                        "battery" if on_battery else "plugged in",
+                        "stretched 1.5x" if on_battery else "normal",
+                    )
 
             defer_seconds = self.scan_environment.defer_seconds()
             if defer_seconds > 0:
