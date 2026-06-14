@@ -60,6 +60,15 @@ class IncidentLedger:
             payload = self._read_payload()
             timestamps = [float(v) for v in payload.get("timestamps", [])]
         except Exception as e:
+            age = _file_age_seconds(self.path)
+            if age is not None and age > INCIDENT_WINDOW_SECONDS:
+                _log.critical(
+                    "Incident memory unreadable but stale (age=%.0fs): %s. Clearing.",
+                    age,
+                    e,
+                )
+                self.clear()
+                return []
             _log.critical("Incident memory unreadable or tampered (%s); fail-secure multiplier cap.", e)
             return None
         return self._prune(timestamps, now)
@@ -109,3 +118,10 @@ class IncidentLedger:
             pass
         except Exception as e:
             _log.warning("Failed to clear incident memory: %s", e)
+
+
+def _file_age_seconds(path: Path) -> Optional[float]:
+    try:
+        return max(0.0, time.time() - path.stat().st_mtime)
+    except OSError:
+        return None

@@ -18,12 +18,14 @@ from typing import Optional
 
 from brake import paths
 from brake.state import crypto
+from brake.state.schema import LOCKOUT_DURATION_MAX
 from brake.test_mode import t
 
 _log = logging.getLogger(__name__)
 
 
 PROBATION_SECONDS = t(5 * 60, 30)
+STALE_UNREADABLE_PROBATION_SECONDS = (LOCKOUT_DURATION_MAX * 60) + PROBATION_SECONDS + (5 * 60)
 
 
 class ProbationTamperedError(RuntimeError):
@@ -93,7 +95,19 @@ class ProbationStore:
     def load(self) -> Optional[ProbationRecord]:
         if not self.path.exists():
             return None
-        raw = json.loads(self.path.read_text(encoding="utf-8"))
+        try:
+            raw = json.loads(self.path.read_text(encoding="utf-8"))
+        except Exception as e:
+            age = _file_age_seconds(self.path)
+            if age is not None and age > STALE_UNREADABLE_PROBATION_SECONDS:
+                _log.critical(
+                    "Probation file unreadable but stale (age=%.0fs): %s. Clearing.",
+                    age,
+                    e,
+                )
+                self.clear()
+                return None
+            raise ProbationTamperedError(f"unreadable probation file: {e}") from e
         try:
             payload = raw["payload"]
             signature = raw["hmac"]
@@ -120,3 +134,10 @@ class ProbationStore:
             pass
         except Exception as e:
             _log.warning("Failed to clear probation file: %s", e)
+
+
+def _file_age_seconds(path: Path) -> Optional[float]:
+    try:
+        return max(0.0, time.time() - path.stat().st_mtime)
+    except OSError:
+        return None

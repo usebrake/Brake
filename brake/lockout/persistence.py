@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,8 +26,11 @@ from typing import Optional
 
 from brake import paths
 from brake.state import crypto
+from brake.state.schema import LOCKOUT_DURATION_MAX
 
 _log = logging.getLogger(__name__)
+
+STALE_UNREADABLE_LOCKOUT_SECONDS = (LOCKOUT_DURATION_MAX * 60) + (5 * 60)
 
 
 @dataclass
@@ -88,6 +92,18 @@ class LockoutPersistence:
         except _TamperedLockoutError as e:
             _log.critical("Lockout file tampered: %s — caller should fail-secure.", e)
             raise
+        except Exception as e:
+            age = _file_age_seconds(self.path)
+            if age is not None and age > STALE_UNREADABLE_LOCKOUT_SECONDS:
+                _log.critical(
+                    "Lockout file unreadable but stale (age=%.0fs): %s. Clearing.",
+                    age,
+                    e,
+                )
+                self.clear()
+                return None
+            _log.critical("Lockout file unreadable: %s — caller should fail-secure.", e)
+            raise _TamperedLockoutError(f"unreadable lockout file: {e}") from e
 
     def clear(self) -> None:
         try:
@@ -123,6 +139,13 @@ class LockoutPersistence:
 
 class _TamperedLockoutError(RuntimeError):
     pass
+
+
+def _file_age_seconds(path: Path) -> Optional[float]:
+    try:
+        return max(0.0, time.time() - path.stat().st_mtime)
+    except OSError:
+        return None
 
 
 # tiny helper so we don't import timedelta everywhere
