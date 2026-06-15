@@ -33,7 +33,9 @@ not mutate state.
 Add write actions one at a time:
 
 - `set_duration(minutes)`
-- `set_sensitivity(value)`
+- `set_anime_enabled(enabled, password?)`
+- `set_recovery_settings(...)`
+- `set_shutdown_after_lockout(enabled, password?)`
 - `enable(password)`
 - `disable(password)`
 - `set_commitment(until, password)`

@@ -33,6 +33,10 @@ class Countdown:
         if self.duration_seconds is not None:
             self._started_monotonic = time.monotonic()
 
+    def set_end_at(self, end_at: datetime) -> None:
+        self.duration_seconds = None
+        self.end_at = end_at.astimezone(timezone.utc)
+
     def remaining(self) -> float:
         if self.end_at is not None:
             return max(0.0, (self.end_at - datetime.now(timezone.utc)).total_seconds())

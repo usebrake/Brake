@@ -14,14 +14,12 @@ from datetime import datetime
 
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
-    QButtonGroup,
     QFrame,
     QHBoxLayout,
     QLabel,
     QMainWindow,
     QMessageBox,
     QPushButton,
-    QRadioButton,
     QScrollArea,
     QSpinBox,
     QTabWidget,
@@ -38,7 +36,7 @@ from brake.gui.recovery_dialog import RecoveryDialog
 from brake.gui.set_password_dialog import ask_new_password
 from brake.state.first_run import ensure_first_run_state
 from brake.state.recovery import RecoveryStore
-from brake.state.schema import LOCKOUT_DURATION_MAX, LOCKOUT_DURATION_MIN, SENSITIVITY_RANK
+from brake.state.schema import LOCKOUT_DURATION_MAX, LOCKOUT_DURATION_MIN
 
 
 _ERROR_MESSAGES = {
@@ -51,9 +49,8 @@ _ERROR_MESSAGES = {
     "invalid_commitment_until": "That commitment end time isn't valid.",
     "not_initialized": "Setup hasn't finished yet.",
     "password_too_short": "Password is too short.",
-    "commitment_blocks_loosening_sensitivity":
-        "Commitment is active. You can only make sensitivity stricter.",
-    "invalid_sensitivity": "That sensitivity setting is not recognized.",
+    "commitment_blocks_loosening_shutdown":
+        "Commitment is active. Shutdown after lockout cannot be turned off.",
 }
 
 
@@ -82,7 +79,6 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(880, 620)
         self.resize(920, 640)
         self._suppress_spin_signal = False
-        self._suppress_sensitivity_signal = False
 
         central = QWidget()
         central.setObjectName("AppRoot")
@@ -387,7 +383,7 @@ class MainWindow(QMainWindow):
             "Detection",
             "Tune how sensitive Brake is and test the lockout without changing the protection logic.",
         ))
-        layout.addWidget(self._build_sensitivity_card())
+        layout.addWidget(self._build_detection_card())
         layout.addWidget(self._build_tools_card())
         layout.addStretch(1)
 
@@ -399,14 +395,14 @@ class MainWindow(QMainWindow):
         scroll.setWidget(page)
         return scroll
 
-    def _build_sensitivity_card(self) -> QFrame:
+    def _build_detection_card(self) -> QFrame:
         card = self._card()
         layout = QVBoxLayout(card)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         layout.addWidget(self._card_head(
-            "Sensitivity",
-            "How readily Brake treats screen content as explicit.",
+            "Detection",
+            "Brake uses one default local detection policy.",
             "S",
         ))
 
@@ -415,46 +411,13 @@ class MainWindow(QMainWindow):
         body_layout.setContentsMargins(18, 14, 18, 18)
         body_layout.setSpacing(12)
 
-        self.sensitivity_group = QButtonGroup(self)
-        self.sensitivity_group.setExclusive(True)
-        self.sensitivity_radios: dict[str, QRadioButton] = {}
-
-        options = [
-            (
-                "light",
-                "Light",
-                "Only clear explicit content triggers a lockout. Lowest false-positive rate.",
-            ),
-            (
-                "balanced",
-                "Balanced",
-                "Best for most people. Gives incidental nudity a short warning pause first.",
-            ),
-            (
-                "strict",
-                "Strict",
-                "Requires two matching scans, then uses warning pauses that grow if it keeps happening.",
-            ),
-        ]
-
-        for idx, (value, label, description) in enumerate(options):
-            option = QWidget()
-            option_layout = QVBoxLayout(option)
-            option_layout.setContentsMargins(0, 0, 0, 0)
-            option_layout.setSpacing(4)
-
-            radio = QRadioButton(label)
-            radio.setProperty("sensitivity", value)
-            radio.toggled.connect(self._on_sensitivity_toggled)
-            self.sensitivity_group.addButton(radio, idx)
-            self.sensitivity_radios[value] = radio
-            option_layout.addWidget(radio)
-
-            desc = QLabel(description)
-            desc.setObjectName("BodyText")
-            desc.setWordWrap(True)
-            option_layout.addWidget(desc)
-            body_layout.addWidget(option)
+        desc = QLabel(
+            "Clear explicit content triggers the full lockout. Incidental nudity "
+            "does not create a short warning lockout."
+        )
+        desc.setObjectName("BodyText")
+        desc.setWordWrap(True)
+        body_layout.addWidget(desc)
 
         layout.addWidget(body)
         return card
@@ -525,7 +488,6 @@ class MainWindow(QMainWindow):
         duration = int(st.get("lockout_duration_minutes", 15))
         commitment_active = bool(st.get("commitment_active", False))
         committed_until = st.get("committed_until")
-        sensitivity = str(st.get("detection_sensitivity", "balanced"))
 
         if commitment_active:
             visual_state = "committed"
@@ -576,22 +538,6 @@ class MainWindow(QMainWindow):
         self.dur_spin.setValue(duration)
         self._suppress_spin_signal = False
 
-        self._refresh_sensitivity_radios(sensitivity, commitment_active)
-
-    def _refresh_sensitivity_radios(self, sensitivity: str, commitment_active: bool) -> None:
-        if sensitivity not in self.sensitivity_radios:
-            sensitivity = "balanced"
-        self._suppress_sensitivity_signal = True
-        for value, radio in self.sensitivity_radios.items():
-            radio.setChecked(value == sensitivity)
-            if commitment_active and SENSITIVITY_RANK[value] < SENSITIVITY_RANK[sensitivity]:
-                radio.setEnabled(False)
-                radio.setToolTip("Commitment is active. Sensitivity can only be stiffened.")
-            else:
-                radio.setEnabled(True)
-                radio.setToolTip("")
-        self._suppress_sensitivity_signal = False
-
     # ---------- actions ----------
 
     def _on_duration_changed(self, value: int) -> None:
@@ -601,20 +547,6 @@ class MainWindow(QMainWindow):
         if not ok:
             QMessageBox.warning(self, APP_NAME, _err_text(err))
             self._refresh()
-
-    def _on_sensitivity_toggled(self, checked: bool) -> None:
-        if self._suppress_sensitivity_signal or not checked:
-            return
-        radio = self.sender()
-        if not isinstance(radio, QRadioButton):
-            return
-        value = str(radio.property("sensitivity") or "")
-        ok, err = self.controller.set_sensitivity(value)
-        if not ok:
-            QMessageBox.warning(self, APP_NAME, _err_text(err))
-            self._refresh()
-            return
-        self._refresh()
 
     def _on_toggle(self) -> None:
         st = self.controller.status()
@@ -656,7 +588,7 @@ class MainWindow(QMainWindow):
                 self,
                 APP_NAME,
                 "Recovery code accepted. For safety, protection will turn off "
-                "after a 15-minute emergency cooldown.",
+                "after the configured emergency cooldown.",
             )
         self._refresh()
 
@@ -684,15 +616,12 @@ class MainWindow(QMainWindow):
             f"How {APP_NAME} responds",
             "Detection runs locally on your screen. Nothing leaves your machine.\n\n"
             "Hard explicit content triggers your full lockout. When the lockout "
-            "ends, Windows shuts down. Repeated full lockouts within 24 hours "
+            "ends, Windows may shut down depending on your Advanced setting. "
+            "Repeated full lockouts within 24 hours "
             "can make the next lockout longer.\n\n"
-            "Partial nudity uses your sensitivity setting:\n\n"
-            "Light ignores partial nudity.\n"
-            "Balanced gives one short warning pause, then cools down for 60 seconds.\n"
-            "Strict requires two matching scans, then uses warning pauses that grow "
-            "from 30 seconds to 60 seconds to 2 minutes.\n\n"
-            "Partial nudity never causes shutdown. Illustrated explicit content is "
-            "checked by a second local detector."
+            "Incidental nudity does not create a short warning lockout. "
+            "Illustrated explicit content is checked by a second local detector "
+            "when that detector is enabled."
         )
 
     def _on_test_lockout(self) -> None:

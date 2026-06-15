@@ -28,7 +28,6 @@ Use plain words. Avoid shame, hype, therapy-speak, and moral grandstanding. Brak
 - commitment
 - recovery code
 - local checks
-- warning pause
 - full lockout
 
 ## Words to avoid in product UI

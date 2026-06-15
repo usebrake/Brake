@@ -23,7 +23,8 @@ Design choices:
 - Optional dependency. If transformers/torch are missing the detector returns
   negative and NudeNet keeps working alone.
 - Context only. In the beta it only ever produces context-severity hits; the
-  watcher decides escalation per mode.
+  watcher converts only high-confidence illustrated explicit hits into the
+  full lockout path when the detector is enabled.
 """
 from __future__ import annotations
 
@@ -53,10 +54,8 @@ MODEL_DIR_NAME = "anime_nsfw_falconsai"
 # ~343MB.
 _ALLOW_PATTERNS = ["config.json", "model.safetensors", "preprocessor_config.json"]
 
-# Detector trigger floor. Kept equal to the lowest per-mode threshold the
-# watcher applies (ANIME_STRICT_CONTEXT_CONFIDENCE), so the detector never
-# pre-suppresses a score that strict mode would still act on. The watcher
-# re-applies the mode-specific threshold on top of this.
+# Detector trigger floor. The watcher applies the product threshold on top of
+# this so lower-confidence illustrated hits do not start a lockout.
 CONTEXT_THRESHOLD = 0.86
 
 _TORCH_THREADS = 2

@@ -2,7 +2,13 @@
 
 import importlib
 import os
+import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 
 def _fresh(tmp: Path):
@@ -47,7 +53,120 @@ def test_dev_controller_can_direct_write_without_service(tmp: Path) -> None:
     print("  [ok] dev controller still allows direct writes without service")
 
 
+def test_recovery_settings_require_password_to_loosen_when_enabled(tmp: Path) -> None:
+    Controller, State, StateStore, hash_password = _fresh(tmp)
+    store = StateStore()
+    store.save(State(password_hash=hash_password("password"), enabled=True))
+
+    controller = Controller(allow_direct_writes=True)
+    controller.service_up = lambda: False  # type: ignore[method-assign]
+
+    ok, err = controller.set_recovery_settings(10, False, 15)
+    assert not ok
+    assert err == "password_required"
+
+    ok, err = controller.set_recovery_settings(10, False, 15, password="wrong")
+    assert not ok
+    assert err == "wrong_password"
+
+    ok, err = controller.set_recovery_settings(10, False, 15, password="password")
+    assert ok, err
+    saved = store.load()
+    assert saved is not None
+    assert saved.recovery_unlock_delay_minutes == 10
+    print("  [ok] enabled recovery loosening requires password")
+
+
+def test_commitment_blocks_recovery_loosening_but_allows_stricter(tmp: Path) -> None:
+    Controller, State, StateStore, hash_password = _fresh(tmp)
+    store = StateStore()
+    future = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(timespec="seconds")
+    store.save(State(
+        password_hash=hash_password("password"),
+        enabled=True,
+        committed_until=future,
+        recovery_unlock_delay_minutes=15,
+        lockout_recovery_enabled=False,
+        lockout_recovery_delay_minutes=15,
+    ))
+
+    controller = Controller(allow_direct_writes=True)
+    controller.service_up = lambda: False  # type: ignore[method-assign]
+
+    ok, err = controller.set_recovery_settings(15, True, 15, password="password")
+    assert not ok
+    assert err == "commitment_blocks_loosening_recovery"
+
+    ok, err = controller.set_recovery_settings(20, False, 20)
+    assert ok, err
+    saved = store.load()
+    assert saved is not None
+    assert saved.recovery_unlock_delay_minutes == 20
+    assert saved.lockout_recovery_enabled is False
+    assert saved.lockout_recovery_delay_minutes == 20
+    print("  [ok] commitment blocks easier recovery but allows stricter settings")
+
+
+def test_shutdown_toggle_requires_password_to_loosen_when_enabled(tmp: Path) -> None:
+    Controller, State, StateStore, hash_password = _fresh(tmp)
+    store = StateStore()
+    store.save(State(password_hash=hash_password("password"), enabled=True))
+
+    controller = Controller(allow_direct_writes=True)
+    controller.service_up = lambda: False  # type: ignore[method-assign]
+
+    ok, err = controller.set_shutdown_after_lockout(False)
+    assert not ok
+    assert err == "password_required"
+
+    ok, err = controller.set_shutdown_after_lockout(False, password="wrong")
+    assert not ok
+    assert err == "wrong_password"
+
+    ok, err = controller.set_shutdown_after_lockout(False, password="password")
+    assert ok, err
+    saved = store.load()
+    assert saved is not None
+    assert saved.shutdown_after_lockout is False
+    print("  [ok] enabled shutdown loosening requires password")
+
+
+def test_commitment_blocks_turning_shutdown_off_but_allows_on(tmp: Path) -> None:
+    Controller, State, StateStore, hash_password = _fresh(tmp)
+    store = StateStore()
+    future = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(timespec="seconds")
+    store.save(State(
+        password_hash=hash_password("password"),
+        enabled=True,
+        committed_until=future,
+        shutdown_after_lockout=True,
+    ))
+
+    controller = Controller(allow_direct_writes=True)
+    controller.service_up = lambda: False  # type: ignore[method-assign]
+
+    ok, err = controller.set_shutdown_after_lockout(False, password="password")
+    assert not ok
+    assert err == "commitment_blocks_loosening_shutdown"
+
+    saved = store.load()
+    assert saved is not None
+    saved.shutdown_after_lockout = False
+    store.save(saved)
+
+    ok, err = controller.set_shutdown_after_lockout(True)
+    assert ok, err
+    saved = store.load()
+    assert saved is not None
+    assert saved.shutdown_after_lockout is True
+    print("  [ok] commitment blocks shutdown loosening but allows stricter setting")
+
+
 if __name__ == "__main__":
     base = Path(os.environ.get("TMP", ".")) / "brake-controller-tests"
     test_installed_controller_does_not_direct_write_without_service(base / "installed")
     test_dev_controller_can_direct_write_without_service(base / "dev")
+    test_recovery_settings_require_password_to_loosen_when_enabled(base / "recovery-password")
+    test_commitment_blocks_recovery_loosening_but_allows_stricter(base / "recovery-commitment")
+    test_shutdown_toggle_requires_password_to_loosen_when_enabled(base / "shutdown-password")
+    test_commitment_blocks_turning_shutdown_off_but_allows_on(base / "shutdown-commitment")

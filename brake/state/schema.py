@@ -10,6 +10,8 @@ Schema history:
   v7: added anime_detection_enabled (bool, default False).
   v8: added anime_detection_mode ("standard" | "strict").
   v9: added recovery_unlock_after (Optional[str] ISO datetime).
+  v10: added recovery cooldown settings.
+  v11: collapsed detection/anime modes to single defaults; added shutdown_after_lockout.
 """
 from __future__ import annotations
 
@@ -17,19 +19,20 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 11
 
 LOCKOUT_DURATION_MIN = 1
 LOCKOUT_DURATION_MAX = 60
 LOCKOUT_DURATION_DEFAULT = 15
 
+RECOVERY_COOLDOWN_MIN = 1
+RECOVERY_COOLDOWN_MAX = 60
+RECOVERY_UNLOCK_DELAY_DEFAULT = 15
+LOCKOUT_RECOVERY_DELAY_DEFAULT = 15
+
 DETECTION_SENSITIVITY_DEFAULT = "balanced"
-DETECTION_SENSITIVITIES = {"light", "balanced", "strict"}
-SENSITIVITY_RANK = {"light": 0, "balanced": 1, "strict": 2}
 
 ANIME_DETECTION_MODE_DEFAULT = "standard"
-ANIME_DETECTION_MODES = {"standard", "strict"}
-ANIME_MODE_RANK = {"standard": 0, "strict": 1}
 
 
 def _now_iso() -> str:
@@ -40,17 +43,15 @@ def _clamp_duration(n: int) -> int:
     return max(LOCKOUT_DURATION_MIN, min(LOCKOUT_DURATION_MAX, int(n)))
 
 
+def _clamp_recovery_cooldown(n: int) -> int:
+    return max(RECOVERY_COOLDOWN_MIN, min(RECOVERY_COOLDOWN_MAX, int(n)))
+
+
 def normalize_detection_sensitivity(value: object) -> str:
-    value_str = str(value or "").strip().lower()
-    if value_str in DETECTION_SENSITIVITIES:
-        return value_str
     return DETECTION_SENSITIVITY_DEFAULT
 
 
 def normalize_anime_detection_mode(value: object) -> str:
-    value_str = str(value or "").strip().lower()
-    if value_str in ANIME_DETECTION_MODES:
-        return value_str
     return ANIME_DETECTION_MODE_DEFAULT
 
 
@@ -64,6 +65,10 @@ class State:
     anime_detection_enabled: bool = False
     anime_detection_mode: str = ANIME_DETECTION_MODE_DEFAULT
     recovery_unlock_after: Optional[str] = None
+    recovery_unlock_delay_minutes: int = RECOVERY_UNLOCK_DELAY_DEFAULT
+    lockout_recovery_enabled: bool = False
+    lockout_recovery_delay_minutes: int = LOCKOUT_RECOVERY_DELAY_DEFAULT
+    shutdown_after_lockout: bool = True
     created_at: str = field(default_factory=_now_iso)
     schema_version: int = SCHEMA_VERSION
 
@@ -71,6 +76,10 @@ class State:
         self.lockout_duration_minutes = _clamp_duration(self.lockout_duration_minutes)
         self.detection_sensitivity = normalize_detection_sensitivity(self.detection_sensitivity)
         self.anime_detection_mode = normalize_anime_detection_mode(self.anime_detection_mode)
+        self.recovery_unlock_delay_minutes = _clamp_recovery_cooldown(self.recovery_unlock_delay_minutes)
+        self.lockout_recovery_enabled = bool(self.lockout_recovery_enabled)
+        self.lockout_recovery_delay_minutes = _clamp_recovery_cooldown(self.lockout_recovery_delay_minutes)
+        self.shutdown_after_lockout = bool(self.shutdown_after_lockout)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -183,6 +192,48 @@ class State:
                 created_at=d.get("created_at", _now_iso()),
                 schema_version=SCHEMA_VERSION,
             )
+        if version == 9:
+            return cls(
+                password_hash=d["password_hash"],
+                enabled=bool(d.get("enabled", False)),
+                lockout_duration_minutes=int(d.get("lockout_duration_minutes", LOCKOUT_DURATION_DEFAULT)),
+                committed_until=d.get("committed_until"),
+                detection_sensitivity=normalize_detection_sensitivity(
+                    d.get("detection_sensitivity", DETECTION_SENSITIVITY_DEFAULT)
+                ),
+                anime_detection_enabled=bool(d.get("anime_detection_enabled", False)),
+                anime_detection_mode=normalize_anime_detection_mode(
+                    d.get("anime_detection_mode", ANIME_DETECTION_MODE_DEFAULT)
+                ),
+                recovery_unlock_after=d.get("recovery_unlock_after"),
+                created_at=d.get("created_at", _now_iso()),
+                schema_version=SCHEMA_VERSION,
+            )
+        if version == 10:
+            return cls(
+                password_hash=d["password_hash"],
+                enabled=bool(d.get("enabled", False)),
+                lockout_duration_minutes=int(d.get("lockout_duration_minutes", LOCKOUT_DURATION_DEFAULT)),
+                committed_until=d.get("committed_until"),
+                detection_sensitivity=normalize_detection_sensitivity(
+                    d.get("detection_sensitivity", DETECTION_SENSITIVITY_DEFAULT)
+                ),
+                anime_detection_enabled=bool(d.get("anime_detection_enabled", False)),
+                anime_detection_mode=normalize_anime_detection_mode(
+                    d.get("anime_detection_mode", ANIME_DETECTION_MODE_DEFAULT)
+                ),
+                recovery_unlock_after=d.get("recovery_unlock_after"),
+                recovery_unlock_delay_minutes=int(
+                    d.get("recovery_unlock_delay_minutes", RECOVERY_UNLOCK_DELAY_DEFAULT)
+                ),
+                lockout_recovery_enabled=bool(d.get("lockout_recovery_enabled", False)),
+                lockout_recovery_delay_minutes=int(
+                    d.get("lockout_recovery_delay_minutes", LOCKOUT_RECOVERY_DELAY_DEFAULT)
+                ),
+                shutdown_after_lockout=True,
+                created_at=d.get("created_at", _now_iso()),
+                schema_version=SCHEMA_VERSION,
+            )
         if version != SCHEMA_VERSION:
             raise ValueError(f"Unsupported state schema_version {version}")
         return cls(
@@ -198,12 +249,26 @@ class State:
                 d.get("anime_detection_mode", ANIME_DETECTION_MODE_DEFAULT)
             ),
             recovery_unlock_after=d.get("recovery_unlock_after"),
+            recovery_unlock_delay_minutes=int(
+                d.get("recovery_unlock_delay_minutes", RECOVERY_UNLOCK_DELAY_DEFAULT)
+            ),
+            lockout_recovery_enabled=bool(d.get("lockout_recovery_enabled", False)),
+            lockout_recovery_delay_minutes=int(
+                d.get("lockout_recovery_delay_minutes", LOCKOUT_RECOVERY_DELAY_DEFAULT)
+            ),
+            shutdown_after_lockout=bool(d.get("shutdown_after_lockout", True)),
             created_at=d.get("created_at", _now_iso()),
             schema_version=version,
         )
 
     def lockout_duration_seconds(self) -> int:
         return self.lockout_duration_minutes * 60
+
+    def recovery_unlock_delay_seconds(self) -> int:
+        return self.recovery_unlock_delay_minutes * 60
+
+    def lockout_recovery_delay_seconds(self) -> int:
+        return self.lockout_recovery_delay_minutes * 60
 
     def committed_until_dt(self) -> Optional[datetime]:
         if not self.committed_until:

@@ -23,6 +23,7 @@ import sys
 from brake import autostart
 from brake.config import load_settings
 from brake.lockout.countdown import Countdown
+from brake.lockout.emergency import apply_lockout_recovery, lockout_recovery_available
 from brake.lockout.persistence import LockoutPersistence, _TamperedLockoutError
 from brake.lockout.recovery import clear_lockout_pid, write_lockout_pid
 from brake.lockout.window import LockoutApp
@@ -46,8 +47,16 @@ def _shutdown_windows() -> None:
 
 def _on_done(persist: LockoutPersistence, shutdown_on_done: bool):
     def done() -> None:
-        persist.clear()
+        should_shutdown = shutdown_on_done
         if shutdown_on_done:
+            try:
+                record = persist.resume()
+                if record is not None:
+                    should_shutdown = record.shutdown_on_done
+            except _TamperedLockoutError:
+                should_shutdown = True
+        persist.clear()
+        if should_shutdown:
             _shutdown_windows()
     return done
 
@@ -64,6 +73,8 @@ def _run_persistent(duration: int, reason: str, message: str = "", shutdown_on_d
             reason=reason,
             message=message,
             on_done=_on_done(persist, shutdown_on_done),
+            recovery_enabled=shutdown_on_done and lockout_recovery_available(),
+            on_recovery_submit=lambda code: apply_lockout_recovery(code, persistence=persist),
         ).run()
     finally:
         clear_lockout_pid()
@@ -95,6 +106,8 @@ def _run_resume() -> int:
             reason=record.reason,
             message=record.message,
             on_done=_on_done(persist, record.shutdown_on_done),
+            recovery_enabled=record.shutdown_on_done and lockout_recovery_available(),
+            on_recovery_submit=lambda code: apply_lockout_recovery(code, persistence=persist),
         ).run()
     finally:
         clear_lockout_pid()

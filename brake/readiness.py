@@ -2,15 +2,14 @@
 
 We can't really stop the user from clicking Enable, but we can audit the
 environment at GUI startup and flag missing pieces clearly so detection
-doesn't silently degrade (e.g. "hentai detection just doesn't fire") or
-fail loud-but-confusing on the first scan.
+doesn't silently degrade or fail loud-but-confusing on the first scan.
 
 Each check is a try-import. We never call out to the network or read the
 user's screen; everything is local.
 
 Returns a list of ReadinessIssue. severity="blocker" means protection
 literally won't work (no NudeNet, no Pillow). severity="warning" means a
-specific capability is missing (e.g. anime detector won't run).
+specific capability is missing (e.g. illustrated detection won't run).
 """
 from __future__ import annotations
 
@@ -74,14 +73,14 @@ def check_all() -> List[ReadinessIssue]:
     if not _check_import("transformers"):
         issues.append(ReadinessIssue(
             "transformers", "warning",
-            "transformers is missing. Illustrated / anime NSFW detection will silently skip. "
-            "only photographic content will be caught.",
+            "transformers is missing. Illustrated detection will silently skip. "
+            "Only photographic content will be caught.",
             "pip install transformers torch",
         ))
     elif not _check_import("torch"):
         issues.append(ReadinessIssue(
             "torch", "warning",
-            "torch is missing. The anime NSFW model loads on torch. Installed transformers can't run it without torch.",
+            "torch is missing. The illustrated detector loads on torch. Installed transformers can't run it without torch.",
             "pip install torch",
         ))
 

@@ -50,6 +50,10 @@ def _status_payload(controller: Controller) -> dict[str, Any]:
         "animeModelStatus": str(status.get("anime_model_status", anime_model_status()) or "not_installed"),
         "recoveryUnlockAfter": status.get("recovery_unlock_after"),
         "recoveryUnlockPending": bool(status.get("recovery_unlock_pending", False)),
+        "recoveryUnlockDelayMinutes": int(status.get("recovery_unlock_delay_minutes", 15) or 15),
+        "lockoutRecoveryEnabled": bool(status.get("lockout_recovery_enabled", False)),
+        "lockoutRecoveryDelayMinutes": int(status.get("lockout_recovery_delay_minutes", 15) or 15),
+        "shutdownAfterLockout": bool(status.get("shutdown_after_lockout", True)),
     }
 
 
@@ -94,6 +98,16 @@ def main(argv: list[str] | None = None) -> int:
     set_anime_mode = sub.add_parser("set-anime-mode")
     set_anime_mode.add_argument("--value", choices=["standard", "strict"], required=True)
     set_anime_mode.add_argument("--password", default="")
+
+    set_recovery_settings = sub.add_parser("set-recovery-settings")
+    set_recovery_settings.add_argument("--recovery-unlock-delay", type=int, required=True)
+    set_recovery_settings.add_argument("--lockout-recovery-enabled", choices=["true", "false"], required=True)
+    set_recovery_settings.add_argument("--lockout-recovery-delay", type=int, required=True)
+    set_recovery_settings.add_argument("--password", default="")
+
+    set_shutdown_after_lockout = sub.add_parser("set-shutdown-after-lockout")
+    set_shutdown_after_lockout.add_argument("--enabled", choices=["true", "false"], required=True)
+    set_shutdown_after_lockout.add_argument("--password", default="")
 
     sub.add_parser("anime-status")
     sub.add_parser("anime-download")
@@ -151,6 +165,20 @@ def main(argv: list[str] | None = None) -> int:
             payload = _ok(_status_payload(controller)) if ok else _error(err)
         elif args.cmd == "set-anime-mode":
             ok, err = controller.set_anime_mode(str(args.value), str(args.password or ""))
+            payload = _ok(_status_payload(controller)) if ok else _error(err)
+        elif args.cmd == "set-recovery-settings":
+            ok, err = controller.set_recovery_settings(
+                int(args.recovery_unlock_delay),
+                str(args.lockout_recovery_enabled).lower() == "true",
+                int(args.lockout_recovery_delay),
+                str(args.password or ""),
+            )
+            payload = _ok(_status_payload(controller)) if ok else _error(err)
+        elif args.cmd == "set-shutdown-after-lockout":
+            ok, err = controller.set_shutdown_after_lockout(
+                str(args.enabled).lower() == "true",
+                str(args.password or ""),
+            )
             payload = _ok(_status_payload(controller)) if ok else _error(err)
         elif args.cmd == "anime-status":
             payload = _ok({

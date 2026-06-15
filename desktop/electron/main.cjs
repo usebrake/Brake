@@ -238,6 +238,20 @@ app.whenReady().then(async () => {
       "--password", String(payload?.password || "")
     ])
   ));
+  ipcMain.handle("brake:set-recovery-settings", async (_event, payload) => (
+    queuedBackend("set-recovery-settings", [
+      "--recovery-unlock-delay", String(payload?.recoveryUnlockDelayMinutes || ""),
+      "--lockout-recovery-enabled", payload?.lockoutRecoveryEnabled ? "true" : "false",
+      "--lockout-recovery-delay", String(payload?.lockoutRecoveryDelayMinutes || ""),
+      "--password", String(payload?.password || "")
+    ])
+  ));
+  ipcMain.handle("brake:set-shutdown-after-lockout", async (_event, payload) => (
+    queuedBackend("set-shutdown-after-lockout", [
+      "--enabled", payload?.enabled ? "true" : "false",
+      "--password", String(payload?.password || "")
+    ])
+  ));
   ipcMain.handle("brake:anime-status", async () => (
     queuedBackend("anime-status")
   ));

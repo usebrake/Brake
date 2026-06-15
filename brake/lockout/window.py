@@ -11,7 +11,7 @@ import sys
 
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QGuiApplication, QKeyEvent
-from PyQt6.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QApplication, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget
 
 from brake.gui.assets import lock_pixmap_teal_large
 from brake.lockout.countdown import Countdown
@@ -21,10 +21,20 @@ _log = logging.getLogger(__name__)
 
 
 class _LockoutWindow(QWidget):
-    def __init__(self, geometry, reason: str, message: str, is_primary: bool, countdown: Countdown) -> None:
+    def __init__(
+        self,
+        geometry,
+        reason: str,
+        message: str,
+        is_primary: bool,
+        countdown: Countdown,
+        recovery_enabled: bool = False,
+        on_recovery_submit=None,
+    ) -> None:
         super().__init__()
         self.countdown = countdown
         self.is_primary = is_primary
+        self.on_recovery_submit = on_recovery_submit
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
@@ -59,16 +69,16 @@ class _LockoutWindow(QWidget):
             # in for logging.
             _log.info("Lockout window built (reason=%s, hidden from UI).", reason)
 
-            if message:
-                self.message_lbl = QLabel(message)
-                self.message_lbl.setStyleSheet(
-                    "color: #ffb454; font-size: 18px; font-weight: 500;"
-                    "font-family: 'Geist', 'Segoe UI', sans-serif;"
-                )
-                self.message_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                self.message_lbl.setWordWrap(True)
-                self.message_lbl.setMaximumWidth(900)
-                layout.addWidget(self.message_lbl)
+            self.message_lbl = QLabel(message)
+            self.message_lbl.setStyleSheet(
+                "color: #ffb454; font-size: 18px; font-weight: 500;"
+                "font-family: 'Geist', 'Segoe UI', sans-serif;"
+            )
+            self.message_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.message_lbl.setWordWrap(True)
+            self.message_lbl.setMaximumWidth(900)
+            self.message_lbl.setVisible(bool(message))
+            layout.addWidget(self.message_lbl)
 
             self.timer_lbl = QLabel("--:--")
             self.timer_lbl.setStyleSheet(
@@ -87,6 +97,103 @@ class _LockoutWindow(QWidget):
             self.footer.setAlignment(Qt.AlignmentFlag.AlignCenter)
             layout.addWidget(self.footer)
 
+            if recovery_enabled and on_recovery_submit:
+                self.recovery_btn = QPushButton("Emergency")
+                self.recovery_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+                self.recovery_btn.setStyleSheet(
+                    "QPushButton { color: #5b626f; background: transparent; "
+                    "border: 1px solid rgba(243, 240, 230, 0.08); "
+                    "border-radius: 6px; padding: 5px 10px; font-size: 11px; "
+                    "font-family: 'Geist', 'Segoe UI', sans-serif; }"
+                    "QPushButton:hover { color: #8f96a3; border-color: rgba(243, 240, 230, 0.16); }"
+                )
+                self.recovery_btn.clicked.connect(self._show_recovery_form)
+                layout.addWidget(self.recovery_btn, alignment=Qt.AlignmentFlag.AlignCenter)
+
+                self.recovery_panel = QWidget()
+                panel_layout = QVBoxLayout(self.recovery_panel)
+                panel_layout.setContentsMargins(0, 0, 0, 0)
+                panel_layout.setSpacing(8)
+
+                self.recovery_status = QLabel("")
+                self.recovery_status.setStyleSheet(
+                    "color: #8f96a3; font-size: 12px; "
+                    "font-family: 'Geist', 'Segoe UI', sans-serif;"
+                )
+                self.recovery_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.recovery_status.setWordWrap(True)
+                self.recovery_status.setMaximumWidth(520)
+                panel_layout.addWidget(self.recovery_status)
+
+                self.recovery_code = QLineEdit()
+                self.recovery_code.setEchoMode(QLineEdit.EchoMode.Password)
+                self.recovery_code.setPlaceholderText("Recovery code")
+                self.recovery_code.setFixedWidth(320)
+                self.recovery_code.setStyleSheet(
+                    "QLineEdit { color: #f3f0e6; background: #12161f; "
+                    "border: 1px solid rgba(243, 240, 230, 0.16); "
+                    "border-radius: 6px; padding: 8px 10px; font-size: 13px; }"
+                    "QLineEdit:focus { border-color: rgba(230, 205, 155, 0.42); }"
+                )
+                self.recovery_code.returnPressed.connect(self._submit_recovery)
+                panel_layout.addWidget(self.recovery_code, alignment=Qt.AlignmentFlag.AlignCenter)
+
+                actions = QHBoxLayout()
+                actions.setSpacing(8)
+                self.recovery_cancel = QPushButton("Cancel")
+                self.recovery_submit = QPushButton("Submit")
+                for btn in (self.recovery_cancel, self.recovery_submit):
+                    btn.setCursor(Qt.CursorShape.PointingHandCursor)
+                    btn.setStyleSheet(
+                        "QPushButton { color: #c2c6cf; background: #181d28; "
+                        "border: 1px solid rgba(243, 240, 230, 0.16); "
+                        "border-radius: 6px; padding: 7px 12px; font-size: 12px; }"
+                        "QPushButton:hover { color: #f3f0e6; background: #212736; }"
+                    )
+                self.recovery_cancel.clicked.connect(self._hide_recovery_form)
+                self.recovery_submit.clicked.connect(self._submit_recovery)
+                actions.addWidget(self.recovery_cancel)
+                actions.addWidget(self.recovery_submit)
+                panel_layout.addLayout(actions)
+
+                self.recovery_panel.hide()
+                layout.addWidget(self.recovery_panel, alignment=Qt.AlignmentFlag.AlignCenter)
+
+    def _show_recovery_form(self) -> None:
+        self.recovery_btn.hide()
+        self.recovery_panel.show()
+        self.recovery_status.setText("Enter your recovery code to start emergency release.")
+        self.recovery_code.setFocus()
+
+    def _hide_recovery_form(self) -> None:
+        self.recovery_code.clear()
+        self.recovery_panel.hide()
+        self.recovery_btn.show()
+
+    def _submit_recovery(self) -> None:
+        code = self.recovery_code.text().strip()
+        if not code:
+            self.recovery_status.setText("Enter your recovery code.")
+            return
+        if not self.on_recovery_submit:
+            self.recovery_status.setText("Emergency release is unavailable.")
+            return
+        ok, message, new_end_at = self.on_recovery_submit(code)
+        if not ok:
+            self.recovery_status.setText(_human_recovery_error(message))
+            self.recovery_code.selectAll()
+            self.recovery_code.setFocus()
+            return
+        if new_end_at is not None:
+            self.countdown.set_end_at(new_end_at)
+        self.message_lbl.setText(message)
+        self.message_lbl.setVisible(True)
+        self.recovery_code.clear()
+        self.recovery_code.setEnabled(False)
+        self.recovery_submit.setEnabled(False)
+        self.recovery_cancel.hide()
+        self.recovery_status.setText("Emergency release pending.")
+
     # Swallow Alt+F4 / Esc / anything that asks us to close early.
     def closeEvent(self, event):
         if not self.countdown.is_done():
@@ -103,11 +210,21 @@ class _LockoutWindow(QWidget):
 
 
 class LockoutApp:
-    def __init__(self, countdown: Countdown, reason: str, message: str = "", on_done=None) -> None:
+    def __init__(
+        self,
+        countdown: Countdown,
+        reason: str,
+        message: str = "",
+        on_done=None,
+        recovery_enabled: bool = False,
+        on_recovery_submit=None,
+    ) -> None:
         self.countdown = countdown
         self.reason = reason
         self.message = message
         self.on_done = on_done  # called once when countdown naturally expires
+        self.recovery_enabled = bool(recovery_enabled)
+        self.on_recovery_submit = on_recovery_submit
         self.windows: list[_LockoutWindow] = []
         self._blocker: KeyboardBlocker | None = None
 
@@ -122,6 +239,8 @@ class LockoutApp:
             win = _LockoutWindow(
                 geom, self.reason, self.message, is_primary=(screen is primary_screen),
                 countdown=self.countdown,
+                recovery_enabled=self.recovery_enabled,
+                on_recovery_submit=self.on_recovery_submit,
             )
             self.windows.append(win)
             win.showFullScreen()
@@ -161,3 +280,15 @@ class LockoutApp:
         timer.start()
 
         return app.exec()
+
+
+def _human_recovery_error(error: str) -> str:
+    return {
+        "wrong_recovery_code": "That recovery code is not correct.",
+        "recovery_unavailable": "Recovery code verification is unavailable.",
+        "lockout_recovery_disabled": "Emergency release is not enabled for lockouts.",
+        "no_active_lockout": "This lockout is no longer active.",
+        "lockout_unavailable": "The lockout record could not be updated.",
+        "state_unavailable": "Brake settings could not be verified.",
+        "not_initialized": "Brake has not been set up yet.",
+    }.get(error, "Emergency release failed.")

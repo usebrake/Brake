@@ -22,7 +22,7 @@ def _iso(dt: datetime) -> str:
 def schedule_recovery_unlock(
     store: StateStore,
     state: State,
-    delay_seconds: int = RECOVERY_UNLOCK_DELAY_SECONDS,
+    delay_seconds: Optional[int] = None,
 ) -> str:
     """Schedule emergency disable and return the unlock timestamp."""
     now = datetime.now(timezone.utc)
@@ -30,6 +30,8 @@ def schedule_recovery_unlock(
     if current and current > now:
         return _iso(current)
 
+    if delay_seconds is None:
+        delay_seconds = state.recovery_unlock_delay_seconds()
     unlock_after = now + timedelta(seconds=max(1, int(delay_seconds)))
     state.recovery_unlock_after = _iso(unlock_after)
     store.save(state)

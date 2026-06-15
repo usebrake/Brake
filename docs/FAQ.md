@@ -20,15 +20,15 @@ Do not delete `C:\Program Files\Brake` unless you are uninstalling.
 
 ## Why does hard explicit content shut down Windows?
 
-The shutdown makes the consequence harder to ignore. It breaks the session and force-closes open apps. Repeated full lockouts within 24 hours can make the next lockout longer.
+The shutdown makes the consequence harder to ignore. It breaks the session and force-closes open apps. Repeated full lockouts within 24 hours can make the next lockout longer. You can turn shutdown after lockout off in Advanced when you are not in a commitment.
 
 ## What about TV, movies, or accidental nudity?
 
-Balanced mode is designed for this. Incidental nudity gets a warning pause first. If nudity keeps appearing after that warning, Brake treats it as intentional and escalates to the full lockout.
+Brake no longer uses the short incidental nudity warning lockout. Clear explicit content still triggers the full lockout through the normal confirmation flow.
 
 ## Will it slow my computer down?
 
-Most of the time Brake sleeps between scans. The heavier work happens only during periodic screen checks. Anime detection adds a second local model only if you download and enable it.
+Most of the time Brake sleeps between scans. The heavier work happens only during periodic screen checks. Illustrated detection adds a second local model only if you download and enable it.
 
 ## Why is installation still technical?
 

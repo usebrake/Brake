@@ -31,11 +31,10 @@ Screenshots are being refreshed for the new Brake UI.
 ## What Brake Does
 
 - Detects real photo/video explicit content with NudeNet.
-- Optionally detects illustrated/anime NSFW content with a separate local model.
-- Offers Light, Balanced, and Strict sensitivity.
+- Optionally detects illustrated explicit content with a separate local model.
 - Treats clear explicit content as a full lockout.
-- In Balanced mode, warns on nudity first, then escalates repeated nudity to a full lockout.
-- Shuts down Windows after a full lockout.
+- Incidental nudity does not create a short warning lockout.
+- Shuts down Windows after a full lockout by default. This can be changed in Advanced when you are not in a commitment.
 - Remembers full lockouts for 24 hours so repeated incidents can make the next lockout longer.
 - Supports Commitment Mode so your password cannot turn protection off early.
 - Shows a per-install recovery code once on first launch.
@@ -85,7 +84,7 @@ Helpful docs:
 
 Brake shows a recovery code once on first launch.
 
-The recovery code can reset your password immediately. It can also start a 15-minute emergency cooldown before Brake turns protection off, including during Commitment Mode.
+The recovery code can reset your password immediately. It can also start an emergency cooldown before Brake turns protection off, including during Commitment Mode. The default cooldown is 15 minutes and can be changed in Advanced.
 
 Do not store it somewhere easy to reach on the same computer if you want strong commitment. Write it down, take a photo on your phone, or give it to someone you trust.
 

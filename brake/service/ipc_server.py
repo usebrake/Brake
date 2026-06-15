@@ -18,12 +18,10 @@ from brake.state.crypto import MIN_PASSWORD_LENGTH, hash_password, is_backdoor, 
 from brake.state.recovery import RecoveryStore, RecoveryTamperedError
 from brake.state.recovery_unlock import apply_due_recovery_unlock, schedule_recovery_unlock
 from brake.state.schema import (
-    ANIME_DETECTION_MODES,
-    ANIME_MODE_RANK,
-    DETECTION_SENSITIVITIES,
-    SENSITIVITY_RANK,
     LOCKOUT_DURATION_MAX,
     LOCKOUT_DURATION_MIN,
+    RECOVERY_COOLDOWN_MAX,
+    RECOVERY_COOLDOWN_MIN,
 )
 
 _log = logging.getLogger(__name__)
@@ -173,6 +171,18 @@ class IPCServer(threading.Thread):
                     str(req.get("value", "")),
                     str(req.get("password", "") or ""),
                 )
+            if cmd == Command.SET_RECOVERY_SETTINGS.value:
+                return self._cmd_set_recovery_settings(
+                    int(req.get("recovery_unlock_delay_minutes", 15)),
+                    bool(req.get("lockout_recovery_enabled", False)),
+                    int(req.get("lockout_recovery_delay_minutes", 15)),
+                    str(req.get("password", "") or ""),
+                )
+            if cmd == Command.SET_SHUTDOWN_AFTER_LOCKOUT.value:
+                return self._cmd_set_shutdown_after_lockout(
+                    bool(req.get("enabled", True)),
+                    str(req.get("password", "") or ""),
+                )
             if cmd == Command.SET_COMMITMENT.value: return self._cmd_set_commitment(
                 str(req.get("until", "")),
                 str(req.get("password", "")),
@@ -207,6 +217,10 @@ class IPCServer(threading.Thread):
             "anime_model_status": anime_model_status(),
             "recovery_unlock_after": s.recovery_unlock_after,
             "recovery_unlock_pending": s.recovery_unlock_pending(),
+            "recovery_unlock_delay_minutes": s.recovery_unlock_delay_minutes,
+            "lockout_recovery_enabled": s.lockout_recovery_enabled,
+            "lockout_recovery_delay_minutes": s.lockout_recovery_delay_minutes,
+            "shutdown_after_lockout": s.shutdown_after_lockout,
         }}
 
     def _cmd_enable(self, new_password: str) -> Dict[str, Any]:
@@ -287,16 +301,7 @@ class IPCServer(threading.Thread):
         s = self._state()
         if s is None:
             return {"ok": False, "error": "not_initialized"}
-        value = str(value or "").strip().lower()
-        if value not in DETECTION_SENSITIVITIES:
-            return {"ok": False, "error": "invalid_sensitivity"}
-        if s.commitment_active() and SENSITIVITY_RANK[value] < SENSITIVITY_RANK[s.detection_sensitivity]:
-            return {"ok": False, "error": "commitment_blocks_loosening_sensitivity"}
-        if s.enabled and SENSITIVITY_RANK[value] < SENSITIVITY_RANK[s.detection_sensitivity]:
-            allowed = self._password_allows_loosen(s, password)
-            if not allowed.get("ok"):
-                return allowed
-        s.detection_sensitivity = value
+        s.detection_sensitivity = "balanced"
         self.store.save(s)
         return {"ok": True}
 
@@ -320,16 +325,58 @@ class IPCServer(threading.Thread):
         s = self._state()
         if s is None:
             return {"ok": False, "error": "not_initialized"}
-        value = str(value or "").strip().lower()
-        if value not in ANIME_DETECTION_MODES:
-            return {"ok": False, "error": "invalid_anime_mode"}
-        if s.commitment_active() and ANIME_MODE_RANK[value] < ANIME_MODE_RANK[s.anime_detection_mode]:
-            return {"ok": False, "error": "commitment_blocks_loosening_anime"}
-        if s.enabled and ANIME_MODE_RANK[value] < ANIME_MODE_RANK[s.anime_detection_mode]:
+        s.anime_detection_mode = "standard"
+        self.store.save(s)
+        return {"ok": True}
+
+    def _cmd_set_shutdown_after_lockout(self, enabled: bool, password: str = "") -> Dict[str, Any]:
+        s = self._state()
+        if s is None:
+            return {"ok": False, "error": "not_initialized"}
+        enabled = bool(enabled)
+        looser = s.shutdown_after_lockout and not enabled
+        if s.commitment_active() and looser:
+            return {"ok": False, "error": "commitment_blocks_loosening_shutdown"}
+        if s.enabled and looser:
             allowed = self._password_allows_loosen(s, password)
             if not allowed.get("ok"):
                 return allowed
-        s.anime_detection_mode = value
+        s.shutdown_after_lockout = enabled
+        self.store.save(s)
+        return {"ok": True}
+
+    def _cmd_set_recovery_settings(
+        self,
+        recovery_unlock_delay_minutes: int,
+        lockout_recovery_enabled: bool,
+        lockout_recovery_delay_minutes: int,
+        password: str = "",
+    ) -> Dict[str, Any]:
+        s = self._state()
+        if s is None:
+            return {"ok": False, "error": "not_initialized"}
+        if not (
+            RECOVERY_COOLDOWN_MIN <= recovery_unlock_delay_minutes <= RECOVERY_COOLDOWN_MAX
+            and RECOVERY_COOLDOWN_MIN <= lockout_recovery_delay_minutes <= RECOVERY_COOLDOWN_MAX
+        ):
+            return {"ok": False, "error": "recovery_cooldown_out_of_range"}
+
+        lockout_recovery_enabled = bool(lockout_recovery_enabled)
+        looser = (
+            recovery_unlock_delay_minutes < s.recovery_unlock_delay_minutes
+            or (lockout_recovery_enabled and not s.lockout_recovery_enabled)
+            or lockout_recovery_delay_minutes < s.lockout_recovery_delay_minutes
+        )
+        if s.commitment_active() and looser:
+            return {"ok": False, "error": "commitment_blocks_loosening_recovery"}
+        if s.enabled and looser:
+            allowed = self._password_allows_loosen(s, password)
+            if not allowed.get("ok"):
+                return allowed
+
+        s.recovery_unlock_delay_minutes = recovery_unlock_delay_minutes
+        s.lockout_recovery_enabled = lockout_recovery_enabled
+        s.lockout_recovery_delay_minutes = lockout_recovery_delay_minutes
         self.store.save(s)
         return {"ok": True}
 

@@ -4,6 +4,7 @@ import {
   Download,
   Info,
   Gauge,
+  KeyRound,
   Maximize,
   Minus,
   Plus,
@@ -24,15 +25,25 @@ const fallbackStatus = {
   lockoutDurationMinutes: 15,
   detectionSensitivity: "balanced",
   animeDetectionEnabled: false,
-  animeDetectionMode: "standard",
   animeModelStatus: "not_installed",
   recoveryUnlockAfter: null,
-  recoveryUnlockPending: false
+  recoveryUnlockPending: false,
+  recoveryUnlockDelayMinutes: 15,
+  lockoutRecoveryEnabled: false,
+  lockoutRecoveryDelayMinutes: 15,
+  shutdownAfterLockout: true
 };
 const MIN_PASSWORD_LENGTH = 6;
-const SENSITIVITY_RANK = { light: 0, balanced: 1, strict: 2 };
-const ANIME_MODE_RANK = { standard: 0, strict: 1 };
 const INCREASE_CONFIRM_GRACE_MS = 45000;
+const RECOVERY_COOLDOWN_MIN = 1;
+const RECOVERY_COOLDOWN_MAX = 60;
+
+function clampRecoveryMinutes(value) {
+  return Math.max(
+    RECOVERY_COOLDOWN_MIN,
+    Math.min(RECOVERY_COOLDOWN_MAX, Number(value) || 15)
+  );
+}
 
 function BrakeMark({ tone = "gold" }) {
   return (
@@ -171,16 +182,31 @@ function SettingRow({ title, description, aside }) {
   );
 }
 
-function SensitivityOption({ active, title, description, onClick, disabled = false, note = "" }) {
+function MinuteStepper({ value, onChange, disabled = false, ariaLabel }) {
+  const minutes = clampRecoveryMinutes(value);
   return (
-    <button className={`radio-row ${active ? "active" : ""}`} onClick={onClick} disabled={disabled}>
-      <span className="radio-dot" />
-      <div>
-        <div className="setting-title">{title}</div>
-        <div className="setting-description">{description}</div>
-        {note ? <div className="setting-note">{note}</div> : null}
-      </div>
-    </button>
+    <div className="stepper-control">
+      <button
+        type="button"
+        aria-label={`Decrease ${ariaLabel}`}
+        disabled={disabled || minutes <= RECOVERY_COOLDOWN_MIN}
+        onClick={() => onChange(minutes - 1)}
+      >
+        <Minus size={14} />
+      </button>
+      <label>
+        <input aria-label={ariaLabel} readOnly value={minutes} />
+        <span>min</span>
+      </label>
+      <button
+        type="button"
+        aria-label={`Increase ${ariaLabel}`}
+        disabled={disabled || minutes >= RECOVERY_COOLDOWN_MAX}
+        onClick={() => onChange(minutes + 1)}
+      >
+        <Plus size={14} />
+      </button>
+    </div>
   );
 }
 
@@ -231,12 +257,12 @@ function PasswordModal({ mode, durationMinutes, commitmentActive, error, onCance
           {enabling
             ? "Set the password used to turn protection off. Without a commitment, this password can turn protection off anytime."
             : commitmentActive
-              ? "Commitment is active. Your password cannot turn protection off right now. A recovery code starts a 15-minute emergency cooldown instead."
-              : "Enter your password to turn protection off. A recovery code can also start a 15-minute emergency cooldown."}
+              ? "Commitment is active. Your password cannot turn protection off right now. A recovery code starts the configured emergency cooldown instead."
+              : "Enter your password to turn protection off. A recovery code can also start the configured emergency cooldown."}
         </p>
         {enabling ? (
           <p>
-            Brake watches the screen and reacts; it does not block websites or apps. Clear explicit content triggers a <strong>{durationMinutes}-minute</strong> lockout, then Windows shuts down and force-closes open apps. Save your work often. If illustrated or anime content is a risk, turn that detector on in Advanced.
+            Brake watches the screen and reacts; it does not block websites or apps. Clear explicit content triggers a <strong>{durationMinutes}-minute</strong> lockout. Save your work often. If illustrated content is a risk, turn that detector on in Illustrated.
           </p>
         ) : null}
         <label className="field">
@@ -465,7 +491,7 @@ function RecoveryModal({ token, regenerated = false, onClose }) {
     <Modal title={regenerated ? "New recovery code" : "Save your recovery code"} onClose={onClose}>
       <div className="password-form">
         <p>
-          This code can reset your password immediately. It can also start a 15-minute emergency cooldown before Brake turns off. You will not see this exact code again.
+          This code can reset your password immediately. It can also start the configured emergency cooldown before Brake turns off. You will not see this exact code again.
         </p>
         <p>
           Do not store it somewhere easy to reach on this computer. Write it on paper, take a photo on your phone, or give it to someone you trust. For the strongest commitment, you can choose not to copy it, but a forgotten password may then require a full reset.
@@ -497,10 +523,10 @@ function GuideSection({ title, children }) {
 
 function GuideModal({ tab, status, onClose }) {
   const duration = Number(status.lockoutDurationMinutes) || 1;
-  const title = tab === "anime"
+  const title = tab === "advanced"
     ? "How advanced settings work"
-    : tab === "detection"
-      ? "How detection works"
+    : tab === "illustrated"
+      ? "How illustrated detection works"
       : "How Brake works";
 
   return (
@@ -517,38 +543,29 @@ function GuideModal({ tab, status, onClose }) {
           </GuideSection>
           <GuideSection title="Commitment">
             <p>Without a commitment, your password can turn protection off anytime. A commitment locks protection in so that password cannot walk it back until the commitment ends.</p>
-            <p>During commitment, you can make Brake stricter, but not easier to bypass. The recovery code can reset a forgotten password or start a 15-minute emergency cooldown before protection turns off.</p>
+            <p>During commitment, you can make Brake stricter, but not easier to bypass. The recovery code can reset a forgotten password or start the configured emergency cooldown before protection turns off.</p>
           </GuideSection>
         </div>
-      ) : tab === "detection" ? (
+      ) : tab === "illustrated" ? (
         <div className="guide">
-          <GuideSection title="Photo and video detection">
-            <p>The main detector checks real photos, videos, streams, and browser content.</p>
-            <p>Exposed genitals or anus are treated as hard explicit content and trigger the full lockout and shutdown flow.</p>
+          <GuideSection title="Illustrated detection">
+            <p>The illustrated detector is optional because it uses a separate local model for anime, drawings, and rendered explicit content.</p>
+            <p>When it is off, Brake ignores illustrated detections. When it is on, high-confidence illustrated explicit content can trigger the full lockout.</p>
           </GuideSection>
-          <GuideSection title="Sensitivity levels">
-            <p><strong>Light:</strong> clear explicit content only. Lowest false-positive rate, but weakest protection.</p>
-            <p><strong>Balanced:</strong> recommended default. Clear explicit content locks. Nudity gets a short warning first, then repeated nudity escalates to the full lockout.</p>
-            <p><strong>Strict:</strong> confirmed nudity triggers the full lockout. Brake uses a fast second scan for partial nudity so one random hit is filtered out.</p>
-          </GuideSection>
-          <GuideSection title="Changing sensitivity">
-            <p>Making detection stricter asks for confirmation. During commitment, you cannot lower it again until the commitment ends.</p>
-            <p>If protection is on without commitment, lowering sensitivity requires your password.</p>
+          <GuideSection title="Model download">
+            <p>The model downloads once to this computer and runs locally. Screenshots are not uploaded, saved, or sent anywhere.</p>
           </GuideSection>
         </div>
       ) : (
         <div className="guide">
-          <GuideSection title="Illustrated detection">
-            <p>Illustrated detection is optional because it uses a separate local model. If illustrated or anime content is a risk for you, turn this on. Once downloaded, it runs on this device only.</p>
-            <p>The model classifies illustrated images as normal or NSFW. It does not identify exact body parts like the main photo detector.</p>
+          <GuideSection title="Recovery code">
+            <p>The recovery code can reset a forgotten password or start the configured emergency cooldown before protection turns off.</p>
           </GuideSection>
-          <GuideSection title="Anime modes">
-            <p><strong>Not strict:</strong> illustrated NSFW causes a short pause only. It does not start the shutdown flow.</p>
-            <p><strong>Strict:</strong> very high-confidence illustrated NSFW can trigger the full lockout. Lower-confidence hits use the short pause.</p>
+          <GuideSection title="Lockout consequences">
+            <p>The shutdown setting controls whether a full lockout shuts Windows down when the timer ends. During commitment, you cannot turn that consequence off.</p>
           </GuideSection>
-          <GuideSection title="Locking anime settings">
-            <p>Turning illustrated detection on during commitment locks it on until the commitment ends.</p>
-            <p>If protection is on without commitment, turning illustrated detection off or lowering strictness requires your password.</p>
+          <GuideSection title="Testing">
+            <p>The test lockout lets you check the full-screen overlay without waiting for a detection.</p>
           </GuideSection>
         </div>
       )}
@@ -589,14 +606,17 @@ export default function App() {
   const [animeInstalling, setAnimeInstalling] = useState(false);
   const [now, setNow] = useState(Date.now());
   const durationSaveTimer = useRef(null);
-  const sensitivitySaveTimer = useRef(null);
+  const recoverySaveTimer = useRef(null);
   const pendingDuration = useRef(false);
-  const pendingSensitivity = useRef(false);
+  const pendingRecovery = useRef(false);
   const durationPreserveUntil = useRef(0);
-  const sensitivityPreserveUntil = useRef(0);
+  const recoveryPreserveUntil = useRef(0);
   const durationDraft = useRef(fallbackStatus.lockoutDurationMinutes);
+  const recoveryDraft = useRef(null);
+  const recoveryBaseline = useRef(null);
   const lockoutIncreaseConfirmUntil = useRef(0);
   const commitmentIncreaseConfirmUntil = useRef(0);
+  const recoveryIncreaseConfirmUntil = useRef(0);
 
   useEffect(() => {
     let alive = true;
@@ -622,24 +642,34 @@ export default function App() {
       window.clearInterval(timer);
       window.clearInterval(clockTimer);
       window.clearTimeout(durationSaveTimer.current);
-      window.clearTimeout(sensitivitySaveTimer.current);
+      window.clearTimeout(recoverySaveTimer.current);
     };
   }, []);
 
   const protectedTone = status.commitmentActive ? "amber" : status.enabled ? "teal" : "gold";
+  const recoverySnapshot = (source) => ({
+    recoveryUnlockDelayMinutes: clampRecoveryMinutes(source?.recoveryUnlockDelayMinutes),
+    lockoutRecoveryEnabled: Boolean(source?.lockoutRecoveryEnabled),
+    lockoutRecoveryDelayMinutes: clampRecoveryMinutes(source?.lockoutRecoveryDelayMinutes)
+  });
   const mergeBackendStatus = (data) => {
     setStatus((current) => {
       const now = Date.now();
       const keepDuration = pendingDuration.current || now < durationPreserveUntil.current;
-      const keepSensitivity = pendingSensitivity.current || now < sensitivityPreserveUntil.current;
+      const keepRecovery = pendingRecovery.current || now < recoveryPreserveUntil.current;
       const nextDuration = keepDuration ? current.lockoutDurationMinutes : data.lockoutDurationMinutes;
+      const nextRecovery = keepRecovery ? recoverySnapshot(current) : recoverySnapshot(data);
       durationDraft.current = Number(nextDuration) || fallbackStatus.lockoutDurationMinutes;
+      if (!keepRecovery) {
+        recoveryDraft.current = nextRecovery;
+        recoveryBaseline.current = nextRecovery;
+      }
       return {
         ...fallbackStatus,
         ...data,
         lockoutDurationMinutes: nextDuration,
-        ...(animeInstalling ? { animeModelStatus: "installing" } : {}),
-        ...(keepSensitivity ? { detectionSensitivity: current.detectionSensitivity } : {})
+        ...nextRecovery,
+        ...(animeInstalling ? { animeModelStatus: "installing" } : {})
       };
     });
   };
@@ -669,23 +699,6 @@ export default function App() {
       });
     }, 180);
   };
-  const saveSensitivitySoon = (value) => {
-    pendingSensitivity.current = true;
-    sensitivityPreserveUntil.current = Date.now() + 1200;
-    window.clearTimeout(sensitivitySaveTimer.current);
-    sensitivitySaveTimer.current = window.setTimeout(() => {
-      window.brake?.setSensitivity?.(value).then((response) => {
-        if (response?.ok) {
-          pendingSensitivity.current = false;
-          sensitivityPreserveUntil.current = Date.now() + 700;
-        } else {
-          pendingSensitivity.current = false;
-          sensitivityPreserveUntil.current = 0;
-        }
-        applyBackendResponse(response);
-      });
-    }, 180);
-  };
   const toggleProtection = () => {
     setPasswordPrompt({ mode: status.enabled ? "disable" : "enable", error: "" });
   };
@@ -704,7 +717,8 @@ export default function App() {
         if (mode === "enable") {
           setNotice("Protection is active.");
         } else if (response.data?.recoveryUnlockPending) {
-          setNotice("Recovery code accepted. Protection will turn off after the 15-minute cooldown.");
+          const delay = Number(response.data?.recoveryUnlockDelayMinutes || status.recoveryUnlockDelayMinutes) || 15;
+          setNotice(`Recovery code accepted. Protection will turn off after the ${delay}-minute cooldown.`);
         } else {
           setNotice("Protection is off.");
         }
@@ -717,7 +731,11 @@ export default function App() {
     });
   };
   const requestTimedConfirmation = (kind, prompt, action) => {
-    const ref = kind === "commitment" ? commitmentIncreaseConfirmUntil : lockoutIncreaseConfirmUntil;
+    const ref = kind === "commitment"
+      ? commitmentIncreaseConfirmUntil
+      : kind === "recovery"
+        ? recoveryIncreaseConfirmUntil
+        : lockoutIncreaseConfirmUntil;
     if (Date.now() < ref.current) {
       action();
       return;
@@ -820,57 +838,6 @@ export default function App() {
     const next = Math.max(1, Math.min(60, Number(status.lockoutDurationMinutes) || 1));
     confirmDurationIncrease(next, () => applyDuration(next));
   };
-  const applySensitivity = (detectionSensitivity, password = "") => {
-    const call = password ? window.brake?.setSensitivityWithPassword : window.brake?.setSensitivity;
-    const previous = status.detectionSensitivity;
-    setStatus((current) => ({ ...current, detectionSensitivity }));
-    if (password) {
-      call?.({ value: detectionSensitivity, password }).then((response) => {
-        if (!response?.ok) {
-          setStatus((current) => ({ ...current, detectionSensitivity: previous }));
-        }
-        if (applyBackendResponse(response)) {
-          setSettingsPasswordPrompt(null);
-        }
-      });
-      return;
-    }
-    saveSensitivitySoon(detectionSensitivity);
-  };
-  const requestSensitivity = (detectionSensitivity) => {
-    const current = status.detectionSensitivity;
-    if (detectionSensitivity === current) return;
-    const currentRank = SENSITIVITY_RANK[current] ?? 1;
-    const nextRank = SENSITIVITY_RANK[detectionSensitivity] ?? 1;
-    if (nextRank < currentRank) {
-      if (status.commitmentActive) {
-        setNotice(humanError("commitment_blocks_loosening_sensitivity"));
-        return;
-      }
-      if (status.enabled) {
-        setSettingsPasswordPrompt({
-          kind: "sensitivity",
-          value: detectionSensitivity,
-          title: "Lower detection sensitivity",
-          body: "Protection is on. Enter your password to lower detection sensitivity.",
-          error: ""
-        });
-        return;
-      }
-      applySensitivity(detectionSensitivity);
-      return;
-    }
-    setConfirmPrompt({
-      title: "Make detection stricter?",
-      body: "This makes Brake respond more strongly to possible explicit content.",
-      warning: status.commitmentActive ? "Because commitment is active, you will not be able to lower it again until the commitment ends." : "",
-      confirmLabel: "Make stricter",
-      onConfirm: () => {
-        setConfirmPrompt(null);
-        applySensitivity(detectionSensitivity);
-      }
-    });
-  };
   const installAnimeDetector = () => {
     setAnimeInstalling(true);
     setStatus((current) => ({ ...current, animeModelStatus: "installing" }));
@@ -880,7 +847,7 @@ export default function App() {
       if (!response?.ok) {
         const nextModelStatus = response?.error === "missing_dependencies" ? "missing_dependencies" : "not_installed";
         setStatus((current) => ({ ...current, animeModelStatus: nextModelStatus }));
-        setNotice(humanError(response?.error || "Anime detector download failed."));
+        setNotice(humanError(response?.error || "Illustrated detector download failed."));
         return;
       }
       const modelStatus = response.data?.animeModelStatus || "ready";
@@ -916,7 +883,7 @@ export default function App() {
         setSettingsPasswordPrompt({
           kind: "anime-enabled",
           value: false,
-          title: "Turn off anime detection",
+          title: "Turn off illustrated detection",
           body: "Protection is on. Enter your password to turn illustrated detection off.",
           error: ""
         });
@@ -926,7 +893,7 @@ export default function App() {
       return;
     }
     setConfirmPrompt({
-      title: "Turn on anime detection?",
+      title: "Turn on illustrated detection?",
       body: "Brake will start checking illustrated explicit content with the local model.",
       warning: status.commitmentActive ? "Because commitment is active, you will not be able to turn this off until the commitment ends." : "",
       confirmLabel: "Turn on",
@@ -936,53 +903,134 @@ export default function App() {
       }
     });
   };
-  const applyAnimeMode = (animeDetectionMode, password = "") => {
-    const call = password ? window.brake?.setAnimeModeWithPassword : window.brake?.setAnimeMode;
-    const previous = status.animeDetectionMode;
-    setStatus((current) => ({ ...current, animeDetectionMode }));
-    const arg = password ? { value: animeDetectionMode, password } : animeDetectionMode;
-    call?.(arg).then((response) => {
-      if (!response?.ok) {
-        setStatus((current) => ({ ...current, animeDetectionMode: previous }));
-      }
-      if (applyBackendResponse(response)) {
-        setSettingsPasswordPrompt(null);
-      }
+  const recoverySettingsPayload = (overrides = {}, base = recoveryDraft.current || recoverySnapshot(status)) => ({
+    recoveryUnlockDelayMinutes: clampRecoveryMinutes(
+      overrides.recoveryUnlockDelayMinutes ?? base.recoveryUnlockDelayMinutes
+    ),
+    lockoutRecoveryEnabled: Boolean(overrides.lockoutRecoveryEnabled ?? base.lockoutRecoveryEnabled),
+    lockoutRecoveryDelayMinutes: clampRecoveryMinutes(
+      overrides.lockoutRecoveryDelayMinutes ?? base.lockoutRecoveryDelayMinutes
+    )
+  });
+  const recoverySettingsLooser = (next, base = recoveryBaseline.current || recoverySnapshot(status)) => (
+    next.recoveryUnlockDelayMinutes < Number(base.recoveryUnlockDelayMinutes)
+    || (next.lockoutRecoveryEnabled && !base.lockoutRecoveryEnabled)
+    || next.lockoutRecoveryDelayMinutes < Number(base.lockoutRecoveryDelayMinutes)
+  );
+  const recoverySettingsStricter = (next, base = recoveryBaseline.current || recoverySnapshot(status)) => (
+    next.recoveryUnlockDelayMinutes > Number(base.recoveryUnlockDelayMinutes)
+    || (!next.lockoutRecoveryEnabled && base.lockoutRecoveryEnabled)
+    || next.lockoutRecoveryDelayMinutes > Number(base.lockoutRecoveryDelayMinutes)
+  );
+  const applyRecoverySettingsResponse = (response, fallback) => {
+    pendingRecovery.current = false;
+    recoveryPreserveUntil.current = response?.ok ? Date.now() + 700 : 0;
+    if (!response?.ok && fallback) {
+      recoveryDraft.current = fallback;
+      setStatus((current) => ({ ...current, ...fallback }));
+    }
+    if (applyBackendResponse(response)) {
+      setSettingsPasswordPrompt(null);
+      setNotice("Recovery settings updated.");
+    }
+  };
+  const saveRecoverySettingsSoon = (next, password = "") => {
+    pendingRecovery.current = true;
+    recoveryPreserveUntil.current = Date.now() + 1200;
+    window.clearTimeout(recoverySaveTimer.current);
+    recoverySaveTimer.current = window.setTimeout(() => {
+      const fallback = recoveryBaseline.current || recoverySnapshot(status);
+      window.brake?.setRecoverySettings?.({ ...next, password }).then((response) => {
+        applyRecoverySettingsResponse(response, fallback);
+      });
+    }, 180);
+  };
+  const applyRecoverySettings = (next, password = "", options = {}) => {
+    const normalized = recoverySettingsPayload(next);
+    recoveryDraft.current = normalized;
+    setStatus((current) => ({ ...current, ...normalized }));
+    if (options.debounce) {
+      saveRecoverySettingsSoon(normalized, password);
+      return;
+    }
+    window.clearTimeout(recoverySaveTimer.current);
+    pendingRecovery.current = true;
+    recoveryPreserveUntil.current = Date.now() + 1200;
+    const fallback = recoveryBaseline.current || recoverySnapshot(status);
+    window.brake?.setRecoverySettings?.({ ...normalized, password }).then((response) => {
+      applyRecoverySettingsResponse(response, fallback);
     });
   };
-  const requestAnimeMode = (animeDetectionMode) => {
-    const current = status.animeDetectionMode;
-    if (animeDetectionMode === current) return;
-    const currentRank = ANIME_MODE_RANK[current] ?? 0;
-    const nextRank = ANIME_MODE_RANK[animeDetectionMode] ?? 0;
-    if (nextRank < currentRank) {
+  const requestRecoverySettings = (next, options = {}) => {
+    const normalized = recoverySettingsPayload(next);
+    const unchanged =
+      normalized.recoveryUnlockDelayMinutes === Number(recoveryDraft.current?.recoveryUnlockDelayMinutes ?? status.recoveryUnlockDelayMinutes)
+      && normalized.lockoutRecoveryEnabled === Boolean(recoveryDraft.current?.lockoutRecoveryEnabled ?? status.lockoutRecoveryEnabled)
+      && normalized.lockoutRecoveryDelayMinutes === Number(recoveryDraft.current?.lockoutRecoveryDelayMinutes ?? status.lockoutRecoveryDelayMinutes);
+    if (unchanged) return;
+    const looser = recoverySettingsLooser(normalized);
+    if (looser) {
       if (status.commitmentActive) {
-        setNotice(humanError("commitment_blocks_loosening_anime"));
+        setNotice(humanError("commitment_blocks_loosening_recovery"));
         return;
       }
       if (status.enabled) {
         setSettingsPasswordPrompt({
-          kind: "anime-mode",
-          value: animeDetectionMode,
-          title: "Lower anime strictness",
-          body: "Protection is on. Enter your password to lower illustrated detection strictness.",
+          kind: "recovery-settings",
+          value: normalized,
+          title: "Change recovery settings",
+          body: "Protection is on. Enter your password to make recovery easier.",
           error: ""
         });
         return;
       }
-      applyAnimeMode(animeDetectionMode);
+      applyRecoverySettings(normalized, "", options);
       return;
     }
-    setConfirmPrompt({
-      title: "Make anime detection stricter?",
-      body: "Strict mode can turn very high-confidence illustrated explicit hits into a full lockout.",
-      warning: status.commitmentActive ? "Because commitment is active, you will not be able to lower it again until the commitment ends." : "",
-      confirmLabel: "Make stricter",
-      onConfirm: () => {
-        setConfirmPrompt(null);
-        applyAnimeMode(animeDetectionMode);
+    if (recoverySettingsStricter(normalized)) {
+      requestTimedConfirmation("recovery", {
+        title: "Make recovery stricter?",
+        body: "This increases the delay or removes the lockout emergency release path.",
+        warning: status.commitmentActive ? "Because commitment is active, you will not be able to make this easier until the commitment ends." : "",
+        confirmLabel: "Apply"
+      }, () => applyRecoverySettings(normalized, "", options));
+      return;
+    }
+    applyRecoverySettings(normalized, "", options);
+  };
+  const applyShutdownAfterLockout = (enabled, password = "") => {
+    const previous = status.shutdownAfterLockout;
+    setStatus((current) => ({ ...current, shutdownAfterLockout: enabled }));
+    window.brake?.setShutdownAfterLockout?.({ enabled, password }).then((response) => {
+      if (!response?.ok) {
+        setStatus((current) => ({ ...current, shutdownAfterLockout: previous }));
+      }
+      if (applyBackendResponse(response)) {
+        setSettingsPasswordPrompt(null);
+        setNotice("Lockout shutdown setting updated.");
       }
     });
+  };
+  const requestShutdownAfterLockout = (enabled) => {
+    if (enabled === status.shutdownAfterLockout) return;
+    const looser = status.shutdownAfterLockout && !enabled;
+    if (looser) {
+      if (status.commitmentActive) {
+        setNotice(humanError("commitment_blocks_loosening_shutdown"));
+        return;
+      }
+      if (status.enabled) {
+        setSettingsPasswordPrompt({
+          kind: "shutdown-after-lockout",
+          value: enabled,
+          title: "Turn off shutdown after lockout",
+          body: "Protection is on. Enter your password to make lockouts end without shutting down Windows.",
+          error: ""
+        });
+        return;
+      }
+    }
+    applyShutdownAfterLockout(enabled);
   };
   const submitSettingsPassword = (password, localError = "") => {
     if (!settingsPasswordPrompt) return;
@@ -991,12 +1039,12 @@ export default function App() {
       return;
     }
     const prompt = settingsPasswordPrompt;
-    if (prompt.kind === "sensitivity") {
-      applySensitivity(prompt.value, password);
-    } else if (prompt.kind === "anime-enabled") {
+    if (prompt.kind === "anime-enabled") {
       applyAnimeEnabled(prompt.value, password);
-    } else if (prompt.kind === "anime-mode") {
-      applyAnimeMode(prompt.value, password);
+    } else if (prompt.kind === "recovery-settings") {
+      applyRecoverySettings(prompt.value, password);
+    } else if (prompt.kind === "shutdown-after-lockout") {
+      applyShutdownAfterLockout(prompt.value, password);
     }
   };
   const testLockout = () => {
@@ -1023,10 +1071,10 @@ export default function App() {
         <button className={tab === "overview" ? "active" : ""} onClick={() => setTab("overview")}>
           <Gauge size={16} /> Overview
         </button>
-        <button className={tab === "detection" ? "active" : ""} onClick={() => setTab("detection")}>
-          <ScanEye size={16} /> Detection
+        <button className={tab === "illustrated" ? "active" : ""} onClick={() => setTab("illustrated")}>
+          <ScanEye size={16} /> Illustrated
         </button>
-        <button className={tab === "anime" ? "active" : ""} onClick={() => setTab("anime")}>
+        <button className={tab === "advanced" ? "active" : ""} onClick={() => setTab("advanced")}>
           <Activity size={16} /> Advanced
         </button>
       </nav>
@@ -1085,59 +1133,22 @@ export default function App() {
               </Card>
             </div>
           </>
-        ) : tab === "detection" ? (
+        ) : tab === "illustrated" ? (
           <>
             <div className="page-head">
-              <h1>Detection</h1>
-              <p>Choose how strongly Brake responds to nudity and explicit content.</p>
+              <h1>Illustrated</h1>
+              <p>Optional local detection for drawings, anime, and rendered explicit content.</p>
               {notice ? <p className="notice">{notice}</p> : null}
             </div>
-            <Card icon={Activity} title="Sensitivity" subtitle="Select the default balance between missed detections and false positives.">
-              <SensitivityOption
-                title="Light"
-                active={status.detectionSensitivity === "light"}
-                description="Only clear explicit content triggers a lockout. Lowest false-positive rate."
-                disabled={status.commitmentActive && SENSITIVITY_RANK.light < SENSITIVITY_RANK[status.detectionSensitivity]}
-                note={status.commitmentActive && SENSITIVITY_RANK.light < SENSITIVITY_RANK[status.detectionSensitivity] ? "Locked by commitment" : ""}
-                onClick={() => requestSensitivity("light")}
-              />
-              <SensitivityOption
-                title="Balanced"
-                active={status.detectionSensitivity === "balanced"}
-                description="Recommended for most people. Nudity gets a warning first, then repeated nudity escalates to a full lockout."
-                disabled={status.commitmentActive && SENSITIVITY_RANK.balanced < SENSITIVITY_RANK[status.detectionSensitivity]}
-                note={status.commitmentActive && SENSITIVITY_RANK.balanced < SENSITIVITY_RANK[status.detectionSensitivity] ? "Locked by commitment" : ""}
-                onClick={() => requestSensitivity("balanced")}
-              />
-              <SensitivityOption
-                title="Strict"
-                active={status.detectionSensitivity === "strict"}
-                description="Confirmed nudity triggers the full lockout. Uses a fast second scan to reduce random false hits."
-                onClick={() => requestSensitivity("strict")}
-              />
-              <div className="card-actions">
-                <Button variant="secondary" icon={ShieldCheck} onClick={testLockout}>
-                  Test lockout
-                </Button>
-              </div>
-            </Card>
-          </>
-        ) : (
-          <>
-            <div className="page-head">
-              <h1>Advanced</h1>
-              <p>Optional local tools for illustrated explicit content and future controls.</p>
-              {notice ? <p className="notice">{notice}</p> : null}
-            </div>
-            <Card icon={Activity} title="Illustrated detector" subtitle="A separate local model for anime, drawings, and rendered explicit content.">
+            <Card icon={ScanEye} title="Illustrated detector" subtitle="Downloads once and runs locally on this computer.">
               <SettingRow
                 title="Model"
-                description="Downloads once to this device. It runs locally and does not upload screenshots."
+                description="Required before illustrated detection can be turned on."
                 aside={<Badge state={status.animeModelStatus === "ready" ? "protected" : ""}>{animeStatusCopy(status.animeModelStatus)}</Badge>}
               />
               <SettingRow
-                title="Anime detection"
-                description="When enabled, illustrated hits can pause or warn. Shutdown only happens in strict mode on very high-confidence explicit hits."
+                title="Illustrated detection"
+                description="When on, high-confidence illustrated explicit content can trigger a full lockout."
                 aside={
                   <button
                     className={`pill-action ${status.animeDetectionEnabled ? "active" : ""}`}
@@ -1147,20 +1158,6 @@ export default function App() {
                     {status.animeDetectionEnabled ? "On" : "Off"}
                   </button>
                 }
-              />
-              <SensitivityOption
-                title="Not strict"
-                active={status.animeDetectionMode === "standard"}
-                description="Illustrated NSFW gets a short pause only. No shutdown path."
-                disabled={status.commitmentActive && status.animeDetectionMode === "strict"}
-                note={status.commitmentActive && status.animeDetectionMode === "strict" ? "Locked by commitment" : ""}
-                onClick={() => requestAnimeMode("standard")}
-              />
-              <SensitivityOption
-                title="Strict"
-                active={status.animeDetectionMode === "strict"}
-                description="Very high-confidence illustrated explicit hits can trigger a full lockout. Lower-confidence hits get a short pause."
-                onClick={() => requestAnimeMode("strict")}
               />
               <div className="card-actions">
                 <Button
@@ -1173,6 +1170,73 @@ export default function App() {
                 </Button>
               </div>
             </Card>
+          </>
+        ) : (
+          <>
+            <div className="page-head">
+              <h1>Advanced</h1>
+              <p>Recovery controls and optional local tools.</p>
+              {notice ? <p className="notice">{notice}</p> : null}
+            </div>
+            <div className="advanced-stack">
+              <Card icon={KeyRound} title="Recovery code" subtitle="Choose how emergency recovery behaves on this device.">
+                <SettingRow
+                  title="Emergency cooldown"
+                  description="How long Brake waits before the recovery code turns protection off."
+                  aside={
+                    <MinuteStepper
+                      ariaLabel="emergency recovery cooldown"
+                      value={status.recoveryUnlockDelayMinutes}
+                      onChange={(value) => requestRecoverySettings({ recoveryUnlockDelayMinutes: value }, { debounce: true })}
+                    />
+                  }
+                />
+                <SettingRow
+                  title="Recovery during lockout"
+                  description="When allowed, the lockout screen shows a small emergency release option. Protection stays on."
+                  aside={
+                    <button
+                      className={`pill-action ${status.lockoutRecoveryEnabled ? "active" : ""}`}
+                      onClick={() => requestRecoverySettings({ lockoutRecoveryEnabled: !status.lockoutRecoveryEnabled })}
+                    >
+                      {status.lockoutRecoveryEnabled ? "On" : "Off"}
+                    </button>
+                  }
+                />
+                <SettingRow
+                  title="Lockout recovery cooldown"
+                  description="After the recovery code is accepted during a lockout, this replaces the remaining timer and skips shutdown."
+                  aside={
+                    <MinuteStepper
+                      ariaLabel="lockout recovery cooldown"
+                      disabled={!status.lockoutRecoveryEnabled}
+                      value={status.lockoutRecoveryDelayMinutes}
+                      onChange={(value) => requestRecoverySettings({ lockoutRecoveryDelayMinutes: value }, { debounce: true })}
+                    />
+                  }
+                />
+              </Card>
+              <Card icon={Power} title="Lockout behavior" subtitle="Choose what happens when a full lockout timer ends.">
+                <SettingRow
+                  title="Shutdown after lockout"
+                  description="When on, Windows shuts down after a full lockout timer ends. During commitment, this cannot be turned off."
+                  aside={
+                    <button
+                      className={`pill-action ${status.shutdownAfterLockout ? "active" : ""}`}
+                      disabled={status.commitmentActive && status.shutdownAfterLockout}
+                      onClick={() => requestShutdownAfterLockout(!status.shutdownAfterLockout)}
+                    >
+                      {status.shutdownAfterLockout ? "On" : "Off"}
+                    </button>
+                  }
+                />
+                <div className="card-actions">
+                  <Button variant="secondary" icon={ShieldCheck} onClick={testLockout}>
+                    Test lockout
+                  </Button>
+                </div>
+              </Card>
+            </div>
           </>
         )}
       </section>
@@ -1263,11 +1327,13 @@ function humanError(error) {
     commitment_active: "Commitment is active. Protection cannot be turned off yet.",
     commitment_blocks_loosening: "Commitment is active. You can only make the lockout longer.",
     commitment_blocks_loosening_sensitivity: "Commitment is active. You can only make detection stricter.",
-    commitment_blocks_unlocking_anime: "Commitment is active. Anime detection cannot be turned off yet.",
-    commitment_blocks_loosening_anime: "Commitment is active. You can only make anime detection stricter.",
+    commitment_blocks_unlocking_anime: "Commitment is active. Illustrated detection cannot be turned off yet.",
+    commitment_blocks_loosening_anime: "Commitment is active. Illustrated detection cannot be made easier.",
+    commitment_blocks_loosening_recovery: "Commitment is active. You can only make recovery stricter.",
     commitment_must_be_future: "Commitment must end in the future.",
     invalid_commitment_until: "That commitment time is not valid.",
-    invalid_anime_mode: "That anime detection setting is not valid.",
+    invalid_anime_mode: "That illustrated detection setting is not valid.",
+    recovery_cooldown_out_of_range: "Recovery cooldown must be between 1 and 60 minutes.",
     not_initialized: "Brake has not been set up yet.",
     password_required: "Enter your password to make this less strict.",
     permission_denied: "Brake could not write settings. Restart Brake or run installer\\install.bat again.",

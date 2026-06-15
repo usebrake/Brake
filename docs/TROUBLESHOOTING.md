@@ -53,7 +53,7 @@ sc query BrakeService
 sc query BrakeWatchdog
 ```
 
-## The anime detector says missing dependencies
+## The illustrated detector says missing dependencies
 
 Run installer\install.bat again. It installs Python dependencies into the system Python used by the service.
 

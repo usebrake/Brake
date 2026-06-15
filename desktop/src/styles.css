@@ -381,6 +381,11 @@ button {
   width: 100%;
 }
 
+.advanced-stack {
+  display: grid;
+  gap: 14px;
+}
+
 .card {
   min-width: 0;
   background: var(--surface-1);
@@ -518,6 +523,12 @@ button {
 .stepper-control button:hover {
   color: var(--fg-1);
   background: var(--surface-3);
+}
+
+.stepper-control button:disabled {
+  color: var(--fg-4);
+  background: transparent;
+  cursor: not-allowed;
 }
 
 .stepper-control label {

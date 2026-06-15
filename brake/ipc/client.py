@@ -113,3 +113,25 @@ class IPCClient:
 
     def set_anime_mode(self, value: str, password: str = "") -> Dict[str, Any]:
         return self.call(Command.SET_ANIME_MODE, value=value, password=password)
+
+    def set_shutdown_after_lockout(self, enabled: bool, password: str = "") -> Dict[str, Any]:
+        return self.call(
+            Command.SET_SHUTDOWN_AFTER_LOCKOUT,
+            enabled=bool(enabled),
+            password=password,
+        )
+
+    def set_recovery_settings(
+        self,
+        recovery_unlock_delay_minutes: int,
+        lockout_recovery_enabled: bool,
+        lockout_recovery_delay_minutes: int,
+        password: str = "",
+    ) -> Dict[str, Any]:
+        return self.call(
+            Command.SET_RECOVERY_SETTINGS,
+            recovery_unlock_delay_minutes=int(recovery_unlock_delay_minutes),
+            lockout_recovery_enabled=bool(lockout_recovery_enabled),
+            lockout_recovery_delay_minutes=int(lockout_recovery_delay_minutes),
+            password=password,
+        )

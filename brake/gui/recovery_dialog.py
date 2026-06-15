@@ -56,7 +56,7 @@ class RecoveryDialog(QDialog):
 
         explainer = QLabel(
             f"This code can reset your password immediately. It can also start "
-            f"a 15-minute emergency cooldown before {APP_NAME} turns off if "
+            f"the configured emergency cooldown before {APP_NAME} turns off if "
             "you get stuck behind a commitment.\n\n"
             "You will not see it again. Do not save it somewhere easy to reach "
             "on this computer. Write it on paper, take a photo on your phone, "

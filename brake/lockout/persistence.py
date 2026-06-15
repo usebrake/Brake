@@ -79,6 +79,29 @@ class LockoutPersistence:
         self._write(record)
         return record
 
+    def replace_active(
+        self,
+        duration_seconds: int,
+        *,
+        message: str = "",
+        shutdown_on_done: bool = False,
+    ) -> Optional[LockoutRecord]:
+        """Replace the active lockout timer while preserving its reason."""
+        existing = self.resume()
+        if existing is None or existing.is_expired():
+            return None
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        record = LockoutRecord(
+            end_at=(now + _td(duration_seconds)).isoformat(),
+            started_at=existing.started_at,
+            duration_seconds=int(duration_seconds),
+            reason=existing.reason,
+            message=message,
+            shutdown_on_done=bool(shutdown_on_done),
+        )
+        self._write(record)
+        return record
+
     def resume(self) -> Optional[LockoutRecord]:
         """Return active record, or None if absent / expired / tampered.
 
