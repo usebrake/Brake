@@ -5,7 +5,6 @@ Verifies:
   - t(real, test) returns the right value for each mode
   - should_actually_shutdown() flips correctly
   - reading the env after import still works (no module-level caching trap)
-  - constants in watcher/escalation reflect the mode at import time
 """
 from __future__ import annotations
 
@@ -72,28 +71,6 @@ def test_shutdown_flag() -> None:
     print("  [ok] should_actually_shutdown() flips with the env")
 
 
-def test_watcher_constants_compress_under_test_mode() -> None:
-    _reset_env("1")
-    from brake.service import watcher as w_test
-    assert w_test.PENALTY_MIN_SECONDS == 20
-
-    _reset_env(None)
-    from brake.service import watcher as w_prod
-    assert w_prod.PENALTY_MIN_SECONDS == 10 * 60
-    print("  [ok] watcher constants reflect mode at import time")
-
-
-def test_probation_constant_compresses_under_test_mode() -> None:
-    _reset_env("1")
-    from brake import escalation as e_test
-    assert e_test.PROBATION_SECONDS == 30
-
-    _reset_env(None)
-    from brake import escalation as e_prod
-    assert e_prod.PROBATION_SECONDS == 5 * 60
-    print("  [ok] PROBATION_SECONDS reflects mode at import time")
-
-
 def main() -> int:
     tests = [
         test_truthy_values,
@@ -101,8 +78,6 @@ def main() -> int:
         test_t_helper_returns_real_in_prod,
         test_t_helper_returns_test_in_test_mode,
         test_shutdown_flag,
-        test_watcher_constants_compress_under_test_mode,
-        test_probation_constant_compresses_under_test_mode,
     ]
     saved = os.environ.get("BRAKE_TEST_MODE")
     try:

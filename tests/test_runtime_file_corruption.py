@@ -10,7 +10,6 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from brake.escalation import ProbationStore, ProbationTamperedError, STALE_UNREADABLE_PROBATION_SECONDS
 from brake.incident_memory import INCIDENT_WINDOW_SECONDS, IncidentLedger, MULTIPLIER_CAP
 from brake.lockout.persistence import LockoutPersistence, STALE_UNREADABLE_LOCKOUT_SECONDS, _TamperedLockoutError
 
@@ -44,26 +43,6 @@ def test_recent_corrupt_lockout_fails_secure(tmp_path: Path) -> None:
     raise AssertionError("recent corrupt lockout did not fail secure")
 
 
-def test_stale_corrupt_probation_is_cleared(tmp_path: Path) -> None:
-    path = tmp_path / "probation.json"
-    _nul_file(path)
-    _make_stale(path, STALE_UNREADABLE_PROBATION_SECONDS + 10)
-    assert ProbationStore(path).load() is None
-    assert not path.exists()
-    print("  [ok] stale corrupt probation file clears instead of killing agent")
-
-
-def test_recent_corrupt_probation_fails_secure(tmp_path: Path) -> None:
-    path = tmp_path / "probation.json"
-    _nul_file(path)
-    try:
-        ProbationStore(path).load()
-    except ProbationTamperedError:
-        print("  [ok] recent corrupt probation file still fails secure")
-        return
-    raise AssertionError("recent corrupt probation did not fail secure")
-
-
 def test_stale_corrupt_incident_memory_is_cleared(tmp_path: Path) -> None:
     path = tmp_path / "incidents.json"
     _nul_file(path)
@@ -88,8 +67,6 @@ def main() -> int:
     tests = [
         test_stale_corrupt_lockout_is_cleared,
         test_recent_corrupt_lockout_fails_secure,
-        test_stale_corrupt_probation_is_cleared,
-        test_recent_corrupt_probation_fails_secure,
         test_stale_corrupt_incident_memory_is_cleared,
         test_recent_corrupt_incident_memory_fails_secure_to_cap,
     ]

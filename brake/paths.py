@@ -48,10 +48,6 @@ def lockout_pid_file() -> Path:
     return data_dir() / "lockout.pid"
 
 
-def probation_file() -> Path:
-    return data_dir() / "probation.json"
-
-
 def incident_file() -> Path:
     return data_dir() / "incidents.json"
 

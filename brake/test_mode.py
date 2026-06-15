@@ -3,9 +3,7 @@
 Set the environment variable BRAKE_TEST_MODE=1 (in the same process that
 launches the service / agent / lockout) to:
 
-- shrink every timer in the detection/lockout/probation pipeline to a few
-  seconds, so you can run the full first-hit -> shutdown -> reboot ->
-  probation -> penalty flow in under two minutes instead of twenty.
+- shrink timers in the detection and lockout pipeline to a few seconds.
 - skip the real Windows shutdown call. The lockout still finishes its
   countdown and logs "would shut down now", but your session survives.
 

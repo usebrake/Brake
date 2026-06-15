@@ -5,7 +5,7 @@ Brake is for self-accountability on Windows. It is meant to raise friction high 
 ## In Scope
 
 - Detecting explicit screen content locally.
-- Triggering lockouts and shutdown/probation flows.
+- Triggering lockouts, shutdowns, and repeated-incident memory.
 - Preventing casual disable through the GUI.
 - Blocking normal disable during Commitment Mode.
 - Guarding uninstall while protection/commitment is active.

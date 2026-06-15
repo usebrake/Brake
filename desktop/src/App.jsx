@@ -513,7 +513,7 @@ function GuideModal({ tab, status, onClose }) {
           </GuideSection>
           <GuideSection title="When protection is on">
             <p>Clear explicit content triggers the full lockout. Your current lockout length is {duration} {duration === 1 ? "minute" : "minutes"}. Repeated full lockouts within 24 hours can make the next lockout longer.</p>
-            <p>When the lockout ends, Windows shuts down and force-closes open apps. After restart, Brake watches strictly for five minutes so the same content cannot be reopened immediately.</p>
+            <p>When the lockout ends, Windows shuts down and force-closes open apps. After restart, Brake goes back to normal protection with the 24-hour memory still active.</p>
           </GuideSection>
           <GuideSection title="Commitment">
             <p>Without a commitment, your password can turn protection off anytime. A commitment locks protection in so that password cannot walk it back until the commitment ends.</p>

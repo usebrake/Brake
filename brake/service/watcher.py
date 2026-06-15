@@ -17,9 +17,8 @@ from brake.config import Settings, load_settings
 from brake.detectors.anime_nsfw import AnimeNSFWDetector
 from brake.detectors.base import DetectionResult, Detector
 from brake.detectors.nudity import NudityDetector
-from brake.escalation import ProbationStore, ProbationTamperedError, current_boot_marker
 from brake.incident_memory import IncidentLedger
-from brake.lockout.recovery import active_lockout_exists, spawn_resume_lockout_if_needed
+from brake.lockout.recovery import spawn_resume_lockout_if_needed
 from brake.runtime import lockout_command
 from brake.service.scan_environment import ScanEnvironmentMonitor
 from brake.service.scan_pacer import FramePacer, SUSTAINED_SCAN_SECONDS
@@ -29,25 +28,18 @@ from brake.test_mode import is_test_mode, t
 
 _log = logging.getLogger(__name__)
 
-PENALTY_MIN_SECONDS = t(10 * 60, 20)
 TEST_MODE_LOCKOUT_SECONDS = 10
 FIRST_LOCKOUT_MESSAGE = (
-    "Your computer will shut down when this timer ends. After restart, "
-    "Brake will run a 5-minute strict watch. If explicit content is "
-    "opened again during that window, a longer lockout will start and "
-    "Windows will shut down again."
-)
-PENALTY_LOCKOUT_MESSAGE = (
-    "Explicit content was detected during the post-restart strict watch. "
-    "Windows will shut down when this timer ends."
+    "Your computer will shut down when this timer ends. Repeated full "
+    "lockouts within 24 hours can make the next lockout longer."
 )
 
 # How many back-to-back zoom confirmations a suspicion streak may trigger
 # before the loop falls back to the pacer's normal cadence. Bounds CPU on
 # persistently borderline screens; the streak resets after the next clean scan.
 FAST_RESCAN_MAX_STREAK = 2
-# How often slow housekeeping (state file read, probation check) runs. The
-# tick loop itself is much faster than this.
+# How often slow housekeeping (state file read) runs. The tick loop itself is
+# much faster than this.
 HOUSEKEEPING_SECONDS = 2.0
 # How often the battery state is re-checked to toggle power-saver pacing.
 POWER_CHECK_SECONDS = 30.0
@@ -120,7 +112,6 @@ class Watcher:
         self.store = store or StateStore()
         self.settings = load_settings()
         self.detectors = _build_detectors(self.settings)
-        self.probation = ProbationStore()
         self.incidents = incidents or IncidentLedger()
         self._lockout_until = 0.0
         self._last_balanced_warning_at = 0.0
@@ -205,40 +196,6 @@ class Watcher:
             return "standard"
         mode = getattr(s, "anime_detection_mode", "standard") or "standard"
         return "strict" if mode == "strict" else "standard"
-
-    def _probation_penalty_seconds(self) -> Optional[int]:
-        if active_lockout_exists():
-            _log.info("Post-restart strict watch waiting for active lockout to finish.")
-            return None
-
-        try:
-            record = self.probation.load()
-        except ProbationTamperedError as e:
-            _log.critical("Probation file tampered. Fail-secure penalty path: %s", e)
-            return max(self._current_lockout_duration_seconds(), PENALTY_MIN_SECONDS)
-
-        if record is None:
-            return None
-
-        boot_marker = current_boot_marker()
-        if record.should_activate(boot_marker):
-            record.activate()
-            self.probation.save(record)
-            _log.warning(
-                "Post-restart strict watch activated for %ds; penalty=%ds.",
-                record.duration_seconds,
-                record.penalty_duration_seconds,
-            )
-
-        if record.is_pending():
-            return None
-
-        if record.is_expired():
-            _log.info("Post-restart strict watch expired; clearing probation.")
-            self.probation.clear()
-            return None
-
-        return max(record.penalty_duration_seconds, PENALTY_MIN_SECONDS)
 
     def _handle_detection(self, hit: DetectionResult, *, evidential: bool = True) -> bool:
         """Handle one hit. Return True when a fast confirmation scan should run.
@@ -338,18 +295,6 @@ class Watcher:
         prior_incidents = self.incidents.recent_count()
         self.incidents.record()
 
-        probation_penalty = self._probation_penalty_seconds()
-        if probation_penalty is not None:
-            self.probation.clear()
-            _spawn_lockout(
-                probation_penalty,
-                reason,
-                message=PENALTY_LOCKOUT_MESSAGE,
-                shutdown_on_done=True,
-            )
-            self._lockout_until = time.monotonic() + probation_penalty
-            return
-
         base_duration = self._current_lockout_duration_seconds()
         duration = self.incidents.scale(base_duration, prior_incidents)
         if duration != base_duration:
@@ -359,8 +304,6 @@ class Watcher:
                 prior_incidents,
                 duration,
             )
-        penalty_duration = max(duration, PENALTY_MIN_SECONDS)
-        self.probation.create_pending(penalty_duration, reason)
         _spawn_lockout(
             duration,
             reason,
@@ -550,7 +493,6 @@ class Watcher:
 
         pending_zoom: Optional[str] = None  # region to zoom-confirm next tick
         confirm_streak = 0
-        last_probation_at = 0.0
         last_power_check_at = 0.0
         last_window_sig: Optional[tuple] = None
         last_virtual_screen = None
@@ -578,10 +520,6 @@ class Watcher:
                 confirm_streak = 0
                 time.sleep(min(5.0, max(0.5, self._lockout_until - now)))
                 continue
-
-            if now - last_probation_at >= HOUSEKEEPING_SECONDS:
-                last_probation_at = now
-                self._probation_penalty_seconds()
 
             if now - last_power_check_at >= POWER_CHECK_SECONDS:
                 last_power_check_at = now

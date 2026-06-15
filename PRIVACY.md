@@ -7,7 +7,7 @@ Brake is designed to run locally.
 - State: `C:\ProgramData\\brake\\state.json`
 - Machine key: `C:\ProgramData\\brake\\state.key`
 - Recovery token hash: `C:\ProgramData\\brake\\recovery.json`
-- Lockout/probation records
+- Lockout and incident memory records
 - Logs
 
 ## Network

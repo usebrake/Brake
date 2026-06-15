@@ -36,7 +36,7 @@ Screenshots are being refreshed for the new Brake UI.
 - Treats clear explicit content as a full lockout.
 - In Balanced mode, warns on nudity first, then escalates repeated nudity to a full lockout.
 - Shuts down Windows after a full lockout.
-- Runs a five-minute strict-watch window after restart.
+- Remembers full lockouts for 24 hours so repeated incidents can make the next lockout longer.
 - Supports Commitment Mode so your password cannot turn protection off early.
 - Shows a per-install recovery code once on first launch.
 
@@ -118,7 +118,7 @@ For source install checks:
 ```powershell
 python -m tests.test_state
 python -m tests.test_ipc
-python -m tests.test_escalation
+python -m tests.test_incident_memory
 python -m tests.test_test_mode
 python -m tests.test_sensitivity
 python -m tests.test_uninstall_guard

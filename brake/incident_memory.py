@@ -3,8 +3,7 @@
 Brake is a reactive deterrent. A repeated relapse spiral should not receive
 exactly the same consequence every time, so this ledger remembers recent full
 lockouts and lets the watcher scale the next fresh lockout duration. The file
-is HMAC-signed like state/probation data; tampering fails secure to the capped
-multiplier.
+is HMAC-signed like state data; tampering fails secure to the capped multiplier.
 """
 from __future__ import annotations
 

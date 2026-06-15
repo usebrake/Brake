@@ -17,7 +17,7 @@ It runs locally on your computer. It checks screenshots on your device, uses loc
 
 When protection is on, Brake checks the screen in the background. It watches and reacts; it does not block websites or apps.
 
-Clear explicit content triggers a full lockout. Repeated full lockouts within 24 hours can make the next lockout longer. When that lockout ends, Windows shuts down and force-closes open apps, so save your work often. After restart, Brake watches strictly for five minutes so the same content cannot be reopened immediately.
+Clear explicit content triggers a full lockout. Repeated full lockouts within 24 hours can make the next lockout longer. When that lockout ends, Windows shuts down and force-closes open apps, so save your work often. After restart, Brake returns to normal protection with the 24-hour memory still active.
 
 Incidental or partial nudity is handled according to your sensitivity setting. Light ignores most of it. Balanced gives one warning first, then escalates repeated nudity. Strict treats confirmed nudity as a full lockout.
 

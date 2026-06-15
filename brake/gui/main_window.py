@@ -629,8 +629,8 @@ class MainWindow(QMainWindow):
                 f"You'll set a <b>new password</b> for this session. Past passwords "
                 f"no longer work.<br><br>"
                 f"Explicit content triggers a <b>{duration}-minute</b> lockout, "
-                "then Windows shuts down. After restart, a five-minute strict watch "
-                "kicks in. Incidental nudity gets a short warning first.",
+                "then Windows shuts down. Repeated full lockouts within 24 hours "
+                "can make the next lockout longer. Incidental nudity gets a short warning first.",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
@@ -684,9 +684,8 @@ class MainWindow(QMainWindow):
             f"How {APP_NAME} responds",
             "Detection runs locally on your screen. Nothing leaves your machine.\n\n"
             "Hard explicit content triggers your full lockout. When the lockout "
-            "ends, Windows shuts down. After restart, a five-minute strict watch "
-            "starts. Reopening explicit content during that window triggers a "
-            "longer lockout.\n\n"
+            "ends, Windows shuts down. Repeated full lockouts within 24 hours "
+            "can make the next lockout longer.\n\n"
             "Partial nudity uses your sensitivity setting:\n\n"
             "Light ignores partial nudity.\n"
             "Balanced gives one short warning pause, then cools down for 60 seconds.\n"
