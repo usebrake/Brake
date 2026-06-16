@@ -145,6 +145,7 @@ function Build-App(
 
 Build-App "BrakeAgent" "packaging\entry_agent.py" $true "Brake Agent" -NeedsNudeNet
 Build-App "BrakeBoot" "packaging\entry_boot.py" $true "Brake Startup Recovery"
+Build-App "BrakeBridge" "packaging\entry_bridge.py" $false "Brake Desktop Bridge"
 Build-App "BrakeLockout" "packaging\entry_lockout.py" $true "Brake Lockout" -NeedsPyQt
 Build-App "BrakeUninstallGuard" "packaging\entry_uninstall_guard.py" $true "Brake Uninstall Guard" -NeedsPyQt
 Build-App "BrakeService" "packaging\entry_service.py" $false "Brake Service"
@@ -152,7 +153,7 @@ Build-App "BrakeWatchdog" "packaging\entry_watchdog.py" $false "Brake Watchdog"
 
 Write-Host ""
 Write-Host "Flattening executable folders into $bundle..."
-foreach ($name in @("BrakeAgent", "BrakeBoot", "BrakeLockout", "BrakeUninstallGuard", "BrakeService", "BrakeWatchdog")) {
+foreach ($name in @("BrakeAgent", "BrakeBoot", "BrakeBridge", "BrakeLockout", "BrakeUninstallGuard", "BrakeService", "BrakeWatchdog")) {
     $src = Join-Path $distRoot $name
     if (-not (Test-Path $src)) { throw "Missing build output: $src" }
     Copy-Item -Path (Join-Path $src "*") -Destination $bundle -Recurse -Force

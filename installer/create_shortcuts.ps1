@@ -60,6 +60,9 @@ $iconPath = Join-Path $RepoRoot "desktop\src\assets\brake-ring.ico"
 if (-not (Test-Path $iconPath)) {
     $iconPath = Join-Path $RepoRoot "brake\gui\assets\brake.ico"
 }
+if (-not (Test-Path $iconPath) -and $GuiExe -and (Test-Path $GuiExe)) {
+    $iconPath = $GuiExe
+}
 
 $shell = New-Object -ComObject WScript.Shell
 $created = @()

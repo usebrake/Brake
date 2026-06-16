@@ -1,5 +1,6 @@
 param(
-    [switch]$SkipCopy
+    [switch]$SkipCopy,
+    [switch]$NoPrompt
 )
 
 # Register the Brake Windows services. Must be elevated.
@@ -39,7 +40,19 @@ function Stop-BrakeUserProcesses {
     try {
         $processes = Get-CimInstance Win32_Process |
             Where-Object {
-                $_.Name -in @("python.exe", "pythonw.exe", "electron.exe", "node.exe", "brake.exe", "BrakeAgent.exe", "BrakeLockout.exe")
+                $_.Name -in @(
+                    "python.exe",
+                    "pythonw.exe",
+                    "electron.exe",
+                    "node.exe",
+                    "brake.exe",
+                    "Brake.exe",
+                    "BrakeAgent.exe",
+                    "BrakeBoot.exe",
+                    "BrakeBridge.exe",
+                    "BrakeLockout.exe",
+                    "BrakeUninstallGuard.exe"
+                )
             }
     } catch {
         Write-Warning "Could not enumerate user processes: $_"
@@ -271,6 +284,10 @@ Write-Host "If Windows search does not show it immediately, open:"
 Write-Host "  $env:ProgramData\Microsoft\Windows\Start Menu\Programs\Brake.lnk"
 Write-Host "  $repoRoot\start-brake.vbs"
 Write-Host "Logs: $env:ProgramData\Brake\logs\"
+
+if ($NoPrompt) {
+    exit 0
+}
 
 $openNow = Read-Host "Open Brake now? [Y/n]"
 if ($openNow -notmatch "^(n|no)$") {

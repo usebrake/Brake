@@ -5,7 +5,9 @@ const path = require("node:path");
 const isSourceInstalled = process.env.BRAKE_INSTALLED_SOURCE === "1";
 const isDev = !app.isPackaged && !isSourceInstalled;
 const repoRoot = path.resolve(__dirname, "../..");
+const installRoot = app.isPackaged ? path.dirname(process.execPath) : repoRoot;
 const pythonExe = process.env.BRAKE_PYTHON || process.env.PYTHON || "python";
+const bridgeExe = app.isPackaged ? path.join(installRoot, "BrakeBridge.exe") : "";
 let backendQueue = Promise.resolve();
 let mainWindow = null;
 let tray = null;
@@ -46,13 +48,17 @@ function appIcon() {
 
 function backend(command, args = [], timeoutMs = 5000) {
   const env = backendEnv();
+  const exe = app.isPackaged ? bridgeExe : pythonExe;
+  const exeArgs = app.isPackaged
+    ? [command, ...args]
+    : ["-m", "brake.desktop_bridge", command, ...args];
 
   return new Promise((resolve) => {
     execFile(
-      pythonExe,
-      ["-m", "brake.desktop_bridge", command, ...args],
+      exe,
+      exeArgs,
       {
-        cwd: repoRoot,
+        cwd: installRoot,
         env,
         windowsHide: true,
         timeout: timeoutMs
@@ -81,7 +87,14 @@ function backend(command, args = [], timeoutMs = 5000) {
 
 function backendEnv() {
   const env = { ...process.env };
-  env.PYTHONPATH = [repoRoot, process.env.PYTHONPATH].filter(Boolean).join(path.delimiter);
+  if (app.isPackaged) {
+    const programData = process.env.ProgramData || "C:\\ProgramData";
+    env.BRAKE_DATA_DIR = process.env.BRAKE_DATA_DIR || path.join(programData, "Brake");
+    delete env.BRAKE_DESKTOP_DEV;
+    delete env.PYTHONPATH;
+  } else {
+    env.PYTHONPATH = [repoRoot, process.env.PYTHONPATH].filter(Boolean).join(path.delimiter);
+  }
   if (isSourceInstalled) {
     const programData = process.env.ProgramData || "C:\\ProgramData";
     env.BRAKE_DATA_DIR = process.env.BRAKE_DATA_DIR || path.join(programData, "Brake");
