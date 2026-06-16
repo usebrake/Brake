@@ -24,7 +24,68 @@ if ((Test-Path $bundle) -and -not $Resume) {
 }
 New-Item -ItemType Directory -Force -Path $bundle, $workRoot, $specRoot | Out-Null
 
-function Build-App($name, $entry, $windowed) {
+function Get-VersionTuple([string]$rawVersion) {
+    $numbers = @()
+    foreach ($part in ($rawVersion -split "[^0-9]+")) {
+        if ($part -ne "") { $numbers += [int]$part }
+    }
+    while ($numbers.Count -lt 4) { $numbers += 0 }
+    return $numbers[0..3]
+}
+
+function Escape-VersionString([string]$value) {
+    return $value.Replace("\", "\\").Replace("'", "\'")
+}
+
+function Write-VersionFile($name, $description) {
+    $parts = Get-VersionTuple $Version
+    $versionTuple = "($($parts[0]), $($parts[1]), $($parts[2]), $($parts[3]))"
+    $safeVersion = Escape-VersionString $Version
+    $safeDescription = Escape-VersionString $description
+    $path = Join-Path $specRoot "$name.version.txt"
+    @"
+VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers=$versionTuple,
+    prodvers=$versionTuple,
+    mask=0x3f,
+    flags=0x0,
+    OS=0x40004,
+    fileType=0x1,
+    subtype=0x0,
+    date=(0, 0)
+  ),
+  kids=[
+    StringFileInfo([
+      StringTable(
+        '040904B0',
+        [
+          StringStruct('CompanyName', 'UseBrake'),
+          StringStruct('FileDescription', '$safeDescription'),
+          StringStruct('FileVersion', '$safeVersion'),
+          StringStruct('InternalName', '$name'),
+          StringStruct('OriginalFilename', '$name.exe'),
+          StringStruct('ProductName', 'Brake'),
+          StringStruct('ProductVersion', '$safeVersion')
+        ]
+      )
+    ]),
+    VarFileInfo([VarStruct('Translation', [1033, 1200])])
+  ]
+)
+"@ | Set-Content -Encoding UTF8 -Path $path
+    return $path
+}
+
+function Build-App(
+    $name,
+    $entry,
+    $windowed,
+    $description,
+    [switch]$NeedsNudeNet,
+    [switch]$NeedsPyQt,
+    [switch]$NeedsAnimeExport
+) {
     $outDir = Join-Path $distRoot $name
     $outExe = Join-Path $outDir "$name.exe"
     if ($Resume -and (Test-Path $outExe)) {
@@ -36,6 +97,7 @@ function Build-App($name, $entry, $windowed) {
     $iconSrc = Join-Path $repoRoot "brake\\gui\assets\brake.ico"
     $stylesSrc = Join-Path $repoRoot "brake\\gui\styles.qss"
     $entrySrc = Join-Path $repoRoot $entry
+    $versionFile = Write-VersionFile $name $description
     $args = @(
         "-m", "PyInstaller",
         "--noconfirm",
@@ -46,16 +108,32 @@ function Build-App($name, $entry, $windowed) {
         "--workpath", $workRoot,
         "--specpath", $specRoot,
         "--icon", $iconSrc,
-        "--collect-all", "nudenet",
-        "--collect-all", "PyQt6",
-        "--collect-submodules", "win32com",
+        "--version-file", $versionFile,
         "--hidden-import", "servicemanager",
         "--hidden-import", "win32timezone",
         "--add-data", "$configSrc;config",
-        "--add-data", "$assetsSrc;brake\\gui\assets",
-        "--add-data", "$stylesSrc;brake\\gui",
         $entrySrc
     )
+    if ($NeedsNudeNet) {
+        $args = $args[0..($args.Length - 2)] + @("--collect-all", "nudenet") + $args[-1]
+    }
+    if ($NeedsPyQt) {
+        $args = $args[0..($args.Length - 2)] + @(
+            "--collect-all", "PyQt6",
+            "--add-data", "$assetsSrc;brake\\gui\assets",
+            "--add-data", "$stylesSrc;brake\\gui"
+        ) + $args[-1]
+    }
+    if ($NeedsAnimeExport) {
+        $args = $args[0..($args.Length - 2)] + @("--hidden-import", "brake.detectors.anime_onnx_export") + $args[-1]
+    } else {
+        $args = $args[0..($args.Length - 2)] + @(
+            "--exclude-module", "torch",
+            "--exclude-module", "transformers",
+            "--exclude-module", "onnx",
+            "--exclude-module", "huggingface_hub"
+        ) + $args[-1]
+    }
     if ($windowed) {
         $args = @("-m", "PyInstaller", "--windowed") + $args[2..($args.Length - 1)]
     }
@@ -65,16 +143,16 @@ function Build-App($name, $entry, $windowed) {
     if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed for $name with exit code $LASTEXITCODE" }
 }
 
-Build-App "brake" "packaging\entry_gui.py" $true
-Build-App "BrakeAgent" "packaging\entry_agent.py" $true
-Build-App "BrakeLockout" "packaging\entry_lockout.py" $true
-Build-App "BrakeUninstallGuard" "packaging\entry_uninstall_guard.py" $true
-Build-App "BrakeService" "packaging\entry_service.py" $false
-Build-App "BrakeWatchdog" "packaging\entry_watchdog.py" $false
+Build-App "BrakeAgent" "packaging\entry_agent.py" $true "Brake Agent" -NeedsNudeNet
+Build-App "BrakeBoot" "packaging\entry_boot.py" $true "Brake Startup Recovery"
+Build-App "BrakeLockout" "packaging\entry_lockout.py" $true "Brake Lockout" -NeedsPyQt
+Build-App "BrakeUninstallGuard" "packaging\entry_uninstall_guard.py" $true "Brake Uninstall Guard" -NeedsPyQt
+Build-App "BrakeService" "packaging\entry_service.py" $false "Brake Service"
+Build-App "BrakeWatchdog" "packaging\entry_watchdog.py" $false "Brake Watchdog"
 
 Write-Host ""
 Write-Host "Flattening executable folders into $bundle..."
-foreach ($name in @("BrakeAgent", "BrakeLockout", "BrakeUninstallGuard", "BrakeService", "BrakeWatchdog")) {
+foreach ($name in @("BrakeAgent", "BrakeBoot", "BrakeLockout", "BrakeUninstallGuard", "BrakeService", "BrakeWatchdog")) {
     $src = Join-Path $distRoot $name
     if (-not (Test-Path $src)) { throw "Missing build output: $src" }
     Copy-Item -Path (Join-Path $src "*") -Destination $bundle -Recurse -Force
@@ -106,4 +184,4 @@ Write-Host "  $bundle"
 Write-Host "  $zip"
 Write-Host "  $shaFile"
 Write-Host ""
-Write-Host "Next: install Inno Setup and run packaging\build_inno.ps1 to create BrakeSetup-$Version.exe"
+Write-Host "Next: package the Electron shell as Brake.exe, then run packaging\build_inno.ps1 to create BrakeSetup-$Version.exe"

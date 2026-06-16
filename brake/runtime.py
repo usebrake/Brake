@@ -66,3 +66,7 @@ def service_command(args: list[str] | None = None) -> list[str]:
 
 def watchdog_command(args: list[str] | None = None) -> list[str]:
     return exe_command("BrakeWatchdog.exe", "brake.watchdog", args=args)
+
+
+def boot_command(args: list[str] | None = None) -> list[str]:
+    return exe_command("BrakeBoot.exe", "brake.boot", args=args, windowless=True)

@@ -1,10 +1,10 @@
-#define MyAppName "brake"
+#define MyAppName "Brake"
 #define MyAppVersion GetEnv("BRAKE_BUILD_VERSION")
 #if MyAppVersion == ""
 #define MyAppVersion "0.1.0-beta"
 #endif
-#define MyAppPublisher "Brake Project"
-#define MyAppExeName "brake.exe"
+#define MyAppPublisher "UseBrake"
+#define MyAppExeName "Brake.exe"
 #define SourceDir "..\dist\\Brake"
 
 [Setup]

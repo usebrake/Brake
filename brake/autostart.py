@@ -14,7 +14,7 @@ import os
 import sys
 from pathlib import Path
 
-from brake.runtime import frozen, lockout_command
+from brake.runtime import boot_command, frozen
 
 _log = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ def _pythonw_path() -> str:
 
 def _build_command() -> str:
     if frozen():
-        return " ".join(f'"{part}"' if " " in part else part for part in lockout_command([]))
+        return " ".join(f'"{part}"' if " " in part else part for part in boot_command([]))
     pythonw = _pythonw_path()
     return f'"{pythonw}" "{BOOT_SCRIPT}"'
 

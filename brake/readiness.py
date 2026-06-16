@@ -73,15 +73,23 @@ def check_all() -> List[ReadinessIssue]:
     if not _check_import("transformers"):
         issues.append(ReadinessIssue(
             "transformers", "warning",
-            "transformers is missing. Illustrated detection will silently skip. "
-            "Only photographic content will be caught.",
-            "pip install transformers torch",
+            "transformers is missing. The illustrated detector cannot be downloaded/exported yet. "
+            "Already-exported illustrated models still run on ONNX Runtime.",
+            "pip install transformers torch onnx",
         ))
     elif not _check_import("torch"):
         issues.append(ReadinessIssue(
             "torch", "warning",
-            "torch is missing. The illustrated detector loads on torch. Installed transformers can't run it without torch.",
-            "pip install torch",
+            "torch is missing. The illustrated detector cannot be exported to ONNX yet. "
+            "Already-exported illustrated models still run on ONNX Runtime.",
+            "pip install torch onnx",
+        ))
+    elif not _check_import("onnx"):
+        issues.append(ReadinessIssue(
+            "onnx", "warning",
+            "onnx is missing. The illustrated detector cannot be exported yet. "
+            "Already-exported illustrated models still run on ONNX Runtime.",
+            "pip install onnx",
         ))
 
     if not _check_import("argon2"):

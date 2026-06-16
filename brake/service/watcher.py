@@ -87,6 +87,12 @@ def _build_detectors(settings: Settings) -> List[Detector]:
     ]
 
 
+def _window_scan_signature(snapshot) -> tuple:
+    # Deliberately excludes title text. Browser/media titles can churn while
+    # the same surface remains active; pixel diffing catches actual content.
+    return (snapshot.hwnd, snapshot.process_name, snapshot.window_rect)
+
+
 def _running_on_battery() -> bool:
     try:
         import psutil
@@ -473,7 +479,7 @@ class Watcher:
             # right away instead of waiting for the pixel diff to notice.
             window_changed = False
             if snapshot is not None:
-                window_sig = (snapshot.hwnd, snapshot.title)
+                window_sig = _window_scan_signature(snapshot)
                 window_changed = last_window_sig is not None and window_sig != last_window_sig
                 last_window_sig = window_sig
                 if last_virtual_screen not in (None, snapshot.virtual_screen):
@@ -553,5 +559,5 @@ class Watcher:
                 # transition is what shows as a flash. Detection is
                 # unaffected; fullscreen video is scanned on the sustained
                 # cadence, which is slower than this tick anyway.
-                tick = max(tick, 1.0)
+                tick = max(tick, 1.5)
             time.sleep(tick)

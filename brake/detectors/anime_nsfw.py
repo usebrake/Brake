@@ -99,10 +99,11 @@ def dependencies_available() -> bool:
     Runtime only needs onnxruntime (a core dependency); torch/transformers/onnx
     are needed solely for the one-time export at install time.
     """
-    return all(
-        importlib.util.find_spec(m) is not None
-        for m in ("transformers", "torch", "onnx")
-    )
+    try:
+        installer = importlib.import_module("brake.detectors.anime_onnx_export")
+        return bool(installer.dependencies_available())
+    except Exception:
+        return False
 
 
 def model_installed() -> bool:
@@ -138,45 +139,14 @@ def _export_to_onnx(root: Path) -> Path:
     Heavy (imports torch + transformers + onnx); runs only at install time or
     as a one-time migration, never on the scan path. Returns the int8 path.
     """
-    import gc
-
-    import torch  # type: ignore[import-not-found]
-    from transformers import AutoModelForImageClassification  # type: ignore[import-not-found]
-    from onnxruntime.quantization import QuantType, quantize_dynamic  # type: ignore[import-not-found]
-
-    fp32_path = root / ONNX_FP32_NAME
-    int8_path = root / ONNX_INT8_NAME
-
-    _log.info("anime_nsfw: exporting ONNX model (one-time)...")
-    model = AutoModelForImageClassification.from_pretrained(str(root))
-    model.eval()
-    dummy = torch.randn(1, 3, _DEFAULT_EDGE, _DEFAULT_EDGE)
-    torch.onnx.export(
-        model,
-        (dummy,),
-        str(fp32_path),
-        input_names=["pixel_values"],
-        output_names=["logits"],
-        dynamic_axes={"pixel_values": {0: "batch"}, "logits": {0: "batch"}},
-        opset_version=14,
-        do_constant_folding=True,
-        dynamo=False,
+    installer = importlib.import_module("brake.detectors.anime_onnx_export")
+    return installer.export_to_onnx(
+        root,
+        edge=_DEFAULT_EDGE,
+        fp32_name=ONNX_FP32_NAME,
+        int8_name=ONNX_INT8_NAME,
+        torch_weight_names=_TORCH_WEIGHT_NAMES,
     )
-    quantize_dynamic(str(fp32_path), str(int8_path), weight_type=QuantType.QInt8)
-    # Release the model so its mmap on model.safetensors is dropped, otherwise
-    # the unlink below fails with a sharing violation on Windows.
-    del model
-    gc.collect()
-    # Drop the large intermediate and source weights; runtime needs only int8.
-    for name in (ONNX_FP32_NAME, *_TORCH_WEIGHT_NAMES):
-        try:
-            (root / name).unlink(missing_ok=True)
-        except OSError as e:
-            _log.warning("anime_nsfw: could not remove %s post-export: %s", name, e)
-    if not int8_path.exists():
-        raise RuntimeError("onnx_export_failed")
-    _log.info("anime_nsfw: ONNX model ready (%.0fMB).", int8_path.stat().st_size / 1e6)
-    return int8_path
 
 
 def download_model() -> None:

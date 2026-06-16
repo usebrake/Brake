@@ -257,7 +257,7 @@ Start-Sleep -Seconds 1
 Write-Host ""
 Write-Host "Creating Start Menu shortcut..."
 try {
-    $guiExe = Join-Path $repoRoot "brake.exe"
+    $guiExe = Join-Path $repoRoot "Brake.exe"
     if (-not (Test-Path $guiExe)) { $guiExe = "" }
     & (Join-Path $PSScriptRoot "create_shortcuts.ps1") -RepoRoot $repoRoot -PythonPath $python -GuiExe $guiExe
 } catch {

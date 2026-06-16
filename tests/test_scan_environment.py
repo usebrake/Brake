@@ -69,6 +69,34 @@ def test_background_windows_need_active_share_titles() -> None:
     print("  [ok] background windows only count with active share titles")
 
 
+def test_window_scan_signature_ignores_title_churn() -> None:
+    from types import SimpleNamespace
+
+    from brake.service.watcher import _window_scan_signature
+
+    base = SimpleNamespace(
+        hwnd=123,
+        process_name="chrome.exe",
+        title="First video title",
+        window_rect=(10, 20, 800, 600),
+    )
+    changed_title = SimpleNamespace(
+        hwnd=123,
+        process_name="chrome.exe",
+        title="Second video title",
+        window_rect=(10, 20, 800, 600),
+    )
+    changed_surface = SimpleNamespace(
+        hwnd=456,
+        process_name="chrome.exe",
+        title="Second video title",
+        window_rect=(10, 20, 800, 600),
+    )
+    assert _window_scan_signature(base) == _window_scan_signature(changed_title)
+    assert _window_scan_signature(base) != _window_scan_signature(changed_surface)
+    print("  [ok] title churn does not force full window scans")
+
+
 def main() -> int:
     for fn in (
         test_rect_covers_with_tolerance,
@@ -76,6 +104,7 @@ def main() -> int:
         test_share_sensitive_clean_scan_interval,
         test_foreground_share_detection_uses_process_not_app_name_in_title,
         test_background_windows_need_active_share_titles,
+        test_window_scan_signature_ignores_title_churn,
     ):
         print(f"\n{fn.__name__}")
         fn()
