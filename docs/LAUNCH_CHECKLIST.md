@@ -4,10 +4,11 @@
 
 - Add current Brake screenshots.
 - Run scripts\doctor.ps1.
-- Run scripts\check_source_install.ps1.
 - Run the Python tests.
 - Run npm run build in desktop.
-- Confirm README install steps work from a fresh GitHub ZIP.
+- Build the Windows installer.
+- Confirm README install steps work from `BrakeSetup.exe`.
+- Upload `BrakeSetup.exe`, the versioned installer, and `SHA256SUMS.txt` to the GitHub release.
 - Confirm uninstall works when protection is off.
 - Confirm uninstall is blocked or delayed when protection or commitment is active.
 - Confirm recovery code reset and emergency cooldown work.
@@ -26,7 +27,7 @@
 
 - Disclose that you built Brake.
 - Lead with privacy and local-only behavior.
-- Be clear that it is a source beta.
+- Be clear that it is a Windows beta.
 - Ask for testers, not customers.
 - Do not claim it is impossible to bypass.
 - Do not attach explicit screenshots.

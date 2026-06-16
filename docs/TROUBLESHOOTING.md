@@ -7,10 +7,10 @@ Windows search can take a moment to index new shortcuts. Try opening Brake direc
 ```text
 C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Brake.lnk
 C:\Users\<you>\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Brake.lnk
-C:\Program Files\Brake\start-brake.vbs
+C:\Program Files\Brake\Brake.exe
 ```
 
-If those files are missing, run installer\install.bat again from the folder that contains it.
+If those files are missing, run the latest `BrakeSetup.exe` again and approve the admin prompt.
 
 The installed app should be here:
 
@@ -18,25 +18,25 @@ The installed app should be here:
 C:\Program Files\Brake
 ```
 
-## The downloaded folder was deleted
+## The downloaded installer was deleted
 
 That is okay after install. Brake runs from `C:\Program Files\Brake`.
 
-If `C:\Program Files\Brake` was deleted, reinstall from the GitHub ZIP.
+If `C:\Program Files\Brake` was deleted, reinstall by running the latest `BrakeSetup.exe`.
 
-## start-brake-dev.bat does not work
+## BrakeSetup.exe does not finish installing
 
-Make sure Node.js LTS is installed.
+Restart Windows, then run the latest `BrakeSetup.exe` again and approve the admin prompt.
 
-Then run:
+If it still fails, open a GitHub install issue and include anything useful from:
 
-```powershell
-.\scripts\doctor.ps1
+```text
+C:\ProgramData\Brake\logs\
 ```
 
-Copy the output into a GitHub install issue.
+## The Start Menu shortcut opens nothing
 
-If the Start Menu shortcut opens nothing, check:
+Check:
 
 ```text
 C:\ProgramData\Brake\logs\desktop-launch.log
@@ -44,7 +44,7 @@ C:\ProgramData\Brake\logs\desktop-launch.log
 
 ## The app opens but protection does not work
 
-Run installer\install.bat as administrator again. The background services need to be installed and running.
+Run the latest `BrakeSetup.exe` again and approve the admin prompt. The background services need to be installed and running.
 
 You can check them with:
 
@@ -53,9 +53,9 @@ sc query BrakeService
 sc query BrakeWatchdog
 ```
 
-## The illustrated detector says missing dependencies
+## The illustrated detector does not install
 
-Run installer\install.bat again. It installs Python dependencies into the system Python used by the service.
+Run the latest `BrakeSetup.exe` again. If the issue remains, open a GitHub issue and include the model status shown in the Illustrated tab.
 
 ## Uninstall is blocked
 
@@ -65,11 +65,11 @@ If commitment is active, use your recovery code and wait for the emergency coold
 
 ## Windows says a file is in use
 
-Restart Windows. Then run installer\uninstall.bat before opening Brake.
+Restart Windows. Then run the uninstaller before opening Brake again.
 
 ## Old recovery code still works after reinstall
 
-That means local data survived uninstall. Run `C:\Program Files\Brake\installer\uninstall.bat` again as administrator.
+That means local data survived uninstall. Run the installed uninstaller again as administrator.
 
 Do not reinstall until the uninstall window says `Local data removed, including recovery code and state files.`
 

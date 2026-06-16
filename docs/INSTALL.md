@@ -1,32 +1,26 @@
-# Install Brake From GitHub
+# Install Brake for Windows
 
-Brake is currently a source beta. GitHub gives you the code, and the install script turns that source folder into an installed Windows app.
+Brake installs like a normal Windows app. The setup file includes everything normal users need.
 
-There is no official one-click public installer yet.
+## Download
 
-## Requirements
+Download the latest Windows installer:
 
-Install these first:
+[Download BrakeSetup.exe](https://github.com/usebrake/Brake/releases/latest/download/BrakeSetup.exe)
 
-- Python 3.11+ x64 from python.org
-- Node.js LTS from nodejs.org
-- Microsoft Visual C++ Redistributable 2015-2022
+You can also view the public source code on GitHub:
 
-When installing Python, check Add python.exe to PATH.
+[View source on GitHub](https://github.com/usebrake/Brake)
 
 ## Install steps
 
-1. On GitHub, click Code.
-2. Click Download ZIP.
-3. Extract the ZIP to your Desktop or another normal folder.
-4. Open the extracted folder.
-5. If you see a folder named brake-main, open that folder.
-6. Open the folder that contains installer\install.bat.
-7. Double-click installer\install.bat.
-8. Approve the Windows admin prompt.
-9. Wait for the script to finish.
-10. When it asks `Open Brake now?`, press Enter to open it or type `n` to skip.
-11. Later, open Brake from the Windows Start Menu by searching for `Brake`.
+1. Download `BrakeSetup.exe`.
+2. Double-click the installer.
+3. Approve the Windows admin prompt.
+4. Follow the installer window.
+5. Launch Brake from the installer, desktop shortcut, or Start Menu.
+6. On first launch, save your recovery code.
+7. Turn on protection and set your password.
 
 The installer copies Brake to:
 
@@ -34,36 +28,34 @@ The installer copies Brake to:
 C:\Program Files\Brake
 ```
 
-It also builds the desktop app, creates the Start Menu shortcut, registers the background services, and makes installed app files read-only for standard users.
+Brake stores local settings, logs, recovery state, and optional model files in:
 
-After install, you can delete the downloaded ZIP/extracted folder. Do not delete `C:\Program Files\Brake` unless you are uninstalling.
+```text
+C:\ProgramData\Brake
+```
+
+You can delete the downloaded `BrakeSetup.exe` after installation.
+
+## Updating Brake
+
+Download the newest `BrakeSetup.exe` and run it again.
+
+The installer stops the old Brake services, replaces the app files, re-registers the services, and keeps your existing local settings in `C:\ProgramData\Brake`.
+
+Do not update while you are in an active lockout or commitment unless you intentionally want to interrupt the running installed app.
 
 ## If Brake is not in the Start Menu
 
-Windows search can take a moment to notice new shortcuts. First try these:
+Windows search can take a moment to notice new shortcuts. Try opening Brake directly:
 
 ```text
 C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Brake.lnk
 C:\Users\<you>\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Brake.lnk
-C:\Program Files\Brake\start-brake.vbs
+C:\Program Files\Brake\Brake.exe
 ```
 
-If none of those exist, run installer\install.bat again from the extracted Brake source folder.
+If those files are missing, run the latest `BrakeSetup.exe` again and approve the admin prompt.
 
-If that fails, run:
+## Development install
 
-```powershell
-.\scripts\doctor.ps1
-```
-
-Then copy the output into a GitHub install issue.
-
-## Running without installing
-
-For development only, you can still run:
-
-```powershell
-.\start-brake-dev.bat
-```
-
-That uses development mode and is not the same as the installed app.
+The source repository still includes development scripts for contributors. Normal users should use `BrakeSetup.exe`.

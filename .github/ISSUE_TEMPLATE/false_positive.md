@@ -13,15 +13,14 @@ Describe the content without attaching explicit or private screenshots.
 
 ## Brake response
 
-- [ ] Warning pause
 - [ ] Full lockout
 - [ ] Shutdown after lockout
 
-## Sensitivity
+## Detector
 
-- [ ] Light
-- [ ] Balanced
-- [ ] Strict
+- [ ] Regular photo/video detector
+- [ ] Illustrated detector
+- [ ] Not sure
 
 ## Context
 

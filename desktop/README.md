@@ -7,15 +7,15 @@ The app is split into two parts:
 - `desktop/` is the Electron + React control panel.
 - `brake/` is the Python backend package. It owns detection, state, lockouts, recovery, commitment, services, and the local agent.
 
-## Installed Source Mode
+## Installed Mode
 
-The GitHub source-beta installer copies the app to:
+The Windows installer copies the app to:
 
 ```text
 C:\Program Files\Brake
 ```
 
-During install, it runs `npm install` and `npm run build`. The Start Menu shortcut then runs Electron against the built `desktop/dist` UI. It does not need the Vite dev server for normal installed use.
+Normal users run `BrakeSetup.exe`. The packaged app includes the built `desktop/dist` UI and does not need Node.js, npm, or the Vite dev server.
 
 ## Development Mode
 

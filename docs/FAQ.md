@@ -12,9 +12,9 @@ No. Brake is source-available. The code is public for trust and review, but the 
 
 Yes, by a determined Windows administrator. Brake is a friction and accountability tool, not a perfect security boundary.
 
-## Can I delete the downloaded GitHub folder?
+## Can I delete the downloaded installer?
 
-Yes, after running installer\install.bat successfully. The installed app runs from `C:\Program Files\Brake`.
+Yes. After Brake is installed, the downloaded `BrakeSetup.exe` is no longer the app. The installed app runs from `C:\Program Files\Brake`.
 
 Do not delete `C:\Program Files\Brake` unless you are uninstalling.
 
@@ -30,6 +30,6 @@ Brake no longer uses the short incidental nudity warning lockout. Clear explicit
 
 Most of the time Brake sleeps between scans. The heavier work happens only during periodic screen checks. Illustrated detection adds a second local model only if you download and enable it.
 
-## Why is installation still technical?
+## Do I need developer tools?
 
-This is a source beta. The goal is to prove the product and fix core behavior before publishing a polished installer.
+No. Normal users should install Brake with `BrakeSetup.exe`.

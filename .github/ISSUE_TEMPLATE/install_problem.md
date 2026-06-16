@@ -13,19 +13,18 @@ Describe the exact step that failed.
 
 ## What did you try?
 
-- [ ] Downloaded ZIP from GitHub
-- [ ] Extracted the ZIP
-- [ ] Opened the folder containing installer\install.bat
-- [ ] Ran installer\install.bat as administrator
+- [ ] Downloaded `BrakeSetup.exe`
+- [ ] Ran `BrakeSetup.exe`
+- [ ] Approved the Windows admin prompt
 - [ ] Tried opening Brake from Start Menu
-- [ ] Tried start-brake-dev.bat
+- [ ] Tried running the installer again after restarting Windows
 
 ## Diagnostics
 
-Paste the output of:
+If Brake opened at least once, include relevant log lines from:
 
-```powershell
-.\scripts\doctor.ps1
+```text
+C:\ProgramData\Brake\logs\
 ```
 
 Do not include passwords or recovery codes.

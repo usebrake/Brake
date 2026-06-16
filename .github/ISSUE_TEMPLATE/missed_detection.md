@@ -14,12 +14,6 @@ labels: missed-detection
 - [ ] Anime/illustrated
 - [ ] Other
 
-## Sensitivity
-
-- [ ] Light
-- [ ] Balanced
-- [ ] Strict
-
 ## What happened?
 
 Describe what Brake missed. Do not attach explicit screenshots.
