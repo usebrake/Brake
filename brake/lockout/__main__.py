@@ -55,7 +55,10 @@ def _on_done(persist: LockoutPersistence, shutdown_on_done: bool):
                     should_shutdown = record.shutdown_on_done
             except _TamperedLockoutError:
                 should_shutdown = True
-        persist.clear()
+        try:
+            persist.clear()
+        except Exception as e:
+            logging.exception("Failed to clear expired lockout record before shutdown: %s", e)
         if should_shutdown:
             _shutdown_windows()
     return done

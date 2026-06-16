@@ -46,7 +46,7 @@ class HardeningConfig:
 @dataclass
 class Settings:
     scan_interval_seconds: int = 15
-    lockout_duration_seconds: int = 600
+    lockout_duration_seconds: int = 900
     nudity: NudityConfig = field(default_factory=NudityConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     hardening: HardeningConfig = field(default_factory=HardeningConfig)
@@ -67,7 +67,7 @@ def load_settings() -> Settings:
     raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     return Settings(
         scan_interval_seconds=int(raw.get("scan_interval_seconds", 15)),
-        lockout_duration_seconds=int(raw.get("lockout_duration_seconds", 600)),
+        lockout_duration_seconds=int(raw.get("lockout_duration_seconds", 900)),
         nudity=NudityConfig(**(raw.get("nudity") or {})),
         logging=LoggingConfig(**(raw.get("logging") or {})),
         hardening=HardeningConfig(**(raw.get("hardening") or {})),

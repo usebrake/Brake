@@ -66,7 +66,12 @@ class StateStore:
         self.check_no_deletion_bypass()
         if not self.exists():
             return None
-        raw = json.loads(self.state_path.read_text(encoding="utf-8"))
+        try:
+            raw = json.loads(self.state_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as e:
+            raise StateTamperedError(f"state.json is not valid JSON: {e}") from e
+        except OSError as e:
+            raise StateTamperedError(f"state.json could not be read: {e}") from e
         try:
             payload = raw["payload"]
             signature = raw["hmac"]

@@ -14,6 +14,7 @@ from PIL import ImageStat
 
 from brake.capture.screen import capture_all_monitors, reset_capture_handle
 from brake.config import Settings, load_settings
+from brake.detection_events import append_detection_event
 from brake.detectors.anime_nsfw import AnimeNSFWDetector
 from brake.detectors.base import DetectionResult, Detector
 from brake.detectors.nudity import NudityDetector
@@ -24,15 +25,12 @@ from brake.service.scan_environment import ScanEnvironmentMonitor
 from brake.service.scan_pacer import FramePacer, SUSTAINED_SCAN_SECONDS
 from brake.state import StateStore, StateTamperedError
 from brake.state.recovery_unlock import apply_due_recovery_unlock
+from brake.state.schema import LOCKOUT_DURATION_DEFAULT
 from brake.test_mode import is_test_mode, t
 
 _log = logging.getLogger(__name__)
 
 TEST_MODE_LOCKOUT_SECONDS = 10
-FIRST_LOCKOUT_MESSAGE = (
-    "Your computer will shut down when this timer ends. Repeated full "
-    "lockouts within 24 hours can make the next lockout longer."
-)
 
 # How many back-to-back zoom confirmations a suspicion streak may trigger
 # before the loop falls back to the pacer's normal cadence. Bounds CPU on
@@ -43,6 +41,7 @@ FAST_RESCAN_MAX_STREAK = 2
 HOUSEKEEPING_SECONDS = 2.0
 # How often the battery state is re-checked to toggle power-saver pacing.
 POWER_CHECK_SECONDS = 30.0
+DETECTION_EVENT_DEDUPE_SECONDS = 20.0
 # Hard explicit video can flicker between labels/frames. A single lower-score
 # genital/anus hit arms a short strike window; a second hard hit confirms.
 HARD_CONFIRM_WINDOW = t(18, 6)
@@ -51,6 +50,34 @@ HARD_CONFIRM_WINDOW = t(18, 6)
 # strike + zoom confirmation path.
 HARD_IMMEDIATE_CONFIDENCE = 0.90
 ANIME_EXPLICIT_CONFIDENCE = 0.90
+
+
+def _ordinal(n: int) -> str:
+    n = max(1, int(n))
+    if 10 <= (n % 100) <= 20:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
+
+
+def _format_minutes(seconds: int) -> str:
+    minutes = max(1, int(round(int(seconds) / 60)))
+    return f"{minutes} minute" if minutes == 1 else f"{minutes} minutes"
+
+
+def _lockout_message(incident_number: int, duration_seconds: int, shutdown_on_done: bool) -> str:
+    ordinal = _ordinal(incident_number)
+    duration = _format_minutes(duration_seconds)
+    consequence = (
+        "Your computer will shut down when this timer ends."
+        if shutdown_on_done
+        else "This window will close when the timer ends."
+    )
+    return (
+        f"This is your {ordinal} full lockout in the last 24 hours. "
+        f"Full lockout time: {duration}. {consequence}"
+    )
 
 
 def _build_detectors(settings: Settings) -> List[Detector]:
@@ -101,6 +128,7 @@ class Watcher:
         self.scan_environment = ScanEnvironmentMonitor()
         self._state_cached_at = 0.0
         self._state_cache: Optional[tuple] = None  # (state, fail_secure)
+        self._last_detection_event_at: dict[tuple[str, str, str, str, str], float] = {}
 
     def _load_state(self) -> tuple:
         """Return (state, fail_secure).
@@ -151,7 +179,7 @@ class Watcher:
             return TEST_MODE_LOCKOUT_SECONDS
         s = self._current_state()
         if s is None:
-            return self.settings.lockout_duration_seconds
+            return LOCKOUT_DURATION_DEFAULT * 60
         return s.lockout_duration_seconds()
 
     def _anime_detection_enabled(self) -> bool:
@@ -181,6 +209,37 @@ class Watcher:
             hit, fast_confirm=True, evidential=evidential
         )
 
+    def _record_detection_event(
+        self,
+        result: DetectionResult,
+        *,
+        action: str,
+        scan_reason: str,
+        profile: str,
+        zoom_region: str,
+    ) -> None:
+        if result.severity == "none" or not result.label:
+            return
+        now = time.monotonic()
+        signature = (
+            result.detector,
+            result.severity,
+            result.label,
+            result.region,
+            action,
+        )
+        last = self._last_detection_event_at.get(signature, 0.0)
+        if now - last < DETECTION_EVENT_DEDUPE_SECONDS:
+            return
+        self._last_detection_event_at[signature] = now
+        append_detection_event(
+            result,
+            action=action,
+            scan_reason=scan_reason,
+            profile=profile,
+            zoom_region=zoom_region,
+        )
+
     def _apply_anime_mode(self, result: DetectionResult) -> DetectionResult:
         if result.detector != "anime_nsfw" or not result.triggered:
             return result
@@ -200,7 +259,7 @@ class Watcher:
     ) -> bool:
         now = time.monotonic()
         label = hit.label or hit.detector.upper()
-        if hit.confidence >= HARD_IMMEDIATE_CONFIDENCE and evidential:
+        if hit.detector != "anime_nsfw" and hit.confidence >= HARD_IMMEDIATE_CONFIDENCE and evidential:
             self._last_hard_pending_label = ""
             self._last_hard_pending_at = 0.0
             self._hard_strike_count = 0
@@ -234,13 +293,19 @@ class Watcher:
         )
         return bool(fast_confirm)
 
-    def _apply_hard_lockout(self, hit: DetectionResult, message: str = FIRST_LOCKOUT_MESSAGE) -> None:
+    def _apply_hard_lockout(self, hit: DetectionResult, message: str = "") -> None:
         reason = hit.label or hit.detector.upper()
         prior_incidents = self.incidents.recent_count()
         self.incidents.record()
 
         base_duration = self._current_lockout_duration_seconds()
         duration = self.incidents.scale(base_duration, prior_incidents)
+        shutdown_on_done = self._shutdown_after_lockout()
+        message = message or _lockout_message(
+            incident_number=prior_incidents + 1,
+            duration_seconds=duration,
+            shutdown_on_done=shutdown_on_done,
+        )
         if duration != base_duration:
             _log.warning(
                 "Incident memory scaled lockout: base=%ds prior=%d duration=%ds",
@@ -252,7 +317,7 @@ class Watcher:
             duration,
             reason,
             message=message,
-            shutdown_on_done=self._shutdown_after_lockout(),
+            shutdown_on_done=shutdown_on_done,
         )
         self._lockout_until = time.monotonic() + duration
 
@@ -285,9 +350,11 @@ class Watcher:
             if getattr(det, "name", "") == "anime_nsfw":
                 if not anime_enabled:
                     continue
-                if profile == "targeted":
+                if profile == "targeted" and not zoom_region:
                     # The anime classifier is the heaviest model; it runs on
                     # full sweeps only so the sustained cadence stays cheap.
+                    # It still runs on targeted confirmation passes when a
+                    # previous illustrated hit supplied a zoom region.
                     continue
             det_started = time.monotonic()
             if getattr(det, "accepts_scan_hints", False):
@@ -319,6 +386,15 @@ class Watcher:
             if res.triggered and res.severity == "context":
                 hit = res
                 break
+        for result, action in ((suspicion, "observed"), (hit, "detected")):
+            if result is not None:
+                self._record_detection_event(
+                    result,
+                    action=action,
+                    scan_reason=reason or "manual",
+                    profile=profile,
+                    zoom_region=zoom_region,
+                )
         _log.info(
             "scan timing: %s total=%.0fms reason=%s profile=%s zoom=%s size=%sx%s mean_rgb=%s suspicion=%s hit=%s",
             " ".join(timings),

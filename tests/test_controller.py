@@ -3,6 +3,7 @@
 import importlib
 import os
 import sys
+import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -162,6 +163,87 @@ def test_commitment_blocks_turning_shutdown_off_but_allows_on(tmp: Path) -> None
     print("  [ok] commitment blocks shutdown loosening but allows stricter setting")
 
 
+def test_corrupt_state_status_is_fail_secure_not_off(tmp: Path) -> None:
+    Controller, State, StateStore, hash_password = _fresh(tmp)
+    store = StateStore()
+    store.save(State(password_hash=hash_password("password"), enabled=False))
+    store.state_path.write_text("", encoding="utf-8")
+
+    controller = Controller(allow_direct_writes=True)
+    controller.service_up = lambda: False  # type: ignore[method-assign]
+
+    status = controller.status()
+    assert status["initialized"] is True
+    assert status["enabled"] is True
+    assert status["fail_secure"] is True
+    assert "valid JSON" in status["state_error"]
+    print("  [ok] corrupt state reports fail-secure active status")
+
+
+def test_failed_ipc_status_falls_back_to_fail_secure_state(tmp: Path) -> None:
+    Controller, State, StateStore, hash_password = _fresh(tmp)
+    store = StateStore()
+    store.save(State(password_hash=hash_password("password"), enabled=False))
+    store.state_path.write_text("", encoding="utf-8")
+
+    controller = Controller(allow_direct_writes=True)
+    controller.service_up = lambda: True  # type: ignore[method-assign]
+    controller.ipc.status = lambda: {"ok": False, "error": "Expecting value"}  # type: ignore[method-assign]
+
+    status = controller.status()
+    assert status["enabled"] is True
+    assert status["fail_secure"] is True
+    print("  [ok] failed IPC status falls back to fail-secure")
+
+
+def test_recovery_code_repairs_corrupt_state(tmp: Path) -> None:
+    Controller, State, StateStore, hash_password = _fresh(tmp)
+    from brake.state.recovery import RecoveryStore
+
+    store = StateStore()
+    store.save(State(password_hash=hash_password("password"), enabled=False))
+    token = RecoveryStore().generate()
+    store.state_path.write_text("", encoding="utf-8")
+
+    controller = Controller(allow_direct_writes=True)
+    controller.service_up = lambda: False  # type: ignore[method-assign]
+
+    ok, err = controller.reset_password_with_recovery(token, "new-password")
+    assert ok, err
+    repaired = store.load()
+    assert repaired is not None
+    assert repaired.enabled is True
+    status = controller.status()
+    assert not status.get("fail_secure", False)
+    assert status["enabled"] is True
+    print("  [ok] recovery code repairs corrupt state")
+
+
+def test_service_ipc_corrupt_state_status_and_repair(tmp: Path) -> None:
+    _Controller, State, StateStore, hash_password = _fresh(tmp)
+    from brake.service.ipc_server import IPCServer
+    from brake.state.recovery import RecoveryStore
+
+    store = StateStore()
+    store.save(State(password_hash=hash_password("password"), enabled=False))
+    token = RecoveryStore().generate()
+    store.state_path.write_text("", encoding="utf-8")
+
+    server = IPCServer(store, threading.Event())
+    status = server._cmd_status()
+    assert status["ok"] is True
+    assert status["data"]["enabled"] is True
+    assert status["data"]["fail_secure"] is True
+
+    repaired = server._cmd_reset_password(token, "new-password")
+    assert repaired["ok"] is True
+    loaded = store.load()
+    assert loaded is not None
+    assert loaded.enabled is True
+    assert not server._cmd_status()["data"].get("fail_secure", False)
+    print("  [ok] service IPC reports and repairs corrupt state")
+
+
 if __name__ == "__main__":
     base = Path(os.environ.get("TMP", ".")) / "brake-controller-tests"
     test_installed_controller_does_not_direct_write_without_service(base / "installed")
@@ -170,3 +252,7 @@ if __name__ == "__main__":
     test_commitment_blocks_recovery_loosening_but_allows_stricter(base / "recovery-commitment")
     test_shutdown_toggle_requires_password_to_loosen_when_enabled(base / "shutdown-password")
     test_commitment_blocks_turning_shutdown_off_but_allows_on(base / "shutdown-commitment")
+    test_corrupt_state_status_is_fail_secure_not_off(base / "corrupt-status")
+    test_failed_ipc_status_falls_back_to_fail_secure_state(base / "ipc-status-fallback")
+    test_recovery_code_repairs_corrupt_state(base / "corrupt-repair")
+    test_service_ipc_corrupt_state_status_and_repair(base / "service-corrupt-repair")

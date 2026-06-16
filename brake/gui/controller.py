@@ -18,7 +18,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from brake.detectors.anime_nsfw import anime_model_status
 from brake.ipc.client import IPCClient, IPCError
-from brake.state import StateStore
+from brake.state import State, StateMissingError, StateStore, StateTamperedError
 from brake.state.crypto import MIN_PASSWORD_LENGTH, hash_password, is_backdoor, verify_password
 from brake.state.recovery import RecoveryStore, RecoveryTamperedError
 from brake.state.recovery_unlock import apply_due_recovery_unlock, schedule_recovery_unlock
@@ -64,13 +64,20 @@ class Controller:
         if self.service_up():
             try:
                 resp = self.ipc.status()
-                data = resp.get("data") or {}
-                # service responded  -  use its view
-                return data
+                if resp.get("ok"):
+                    data = resp.get("data") or {}
+                    # service responded  -  use its view
+                    return data
+                if resp.get("error") == "state_untrusted":
+                    return self._fail_secure_status(str(resp.get("detail", "") or "state_untrusted"))
+                self._invalidate()
             except IPCError:
                 self._invalidate()
         # fallback: read state.json directly
-        s = self._load_state()
+        try:
+            s = self._load_state()
+        except (StateTamperedError, StateMissingError) as e:
+            return self._fail_secure_status(str(e))
         if s is None:
             return {"initialized": False}
         return self._status_from_state(s)
@@ -80,6 +87,28 @@ class Controller:
         if s is not None:
             s = apply_due_recovery_unlock(self.store, s)
         return s
+
+    @staticmethod
+    def _fail_secure_status(error: str) -> Dict[str, Any]:
+        return {
+            "initialized": True,
+            "enabled": True,
+            "fail_secure": True,
+            "state_error": error,
+            "lockout_duration_minutes": 15,
+            "committed_until": None,
+            "commitment_active": False,
+            "detection_sensitivity": "balanced",
+            "anime_detection_enabled": False,
+            "anime_detection_mode": "standard",
+            "anime_model_status": anime_model_status(),
+            "recovery_unlock_after": None,
+            "recovery_unlock_pending": False,
+            "recovery_unlock_delay_minutes": 15,
+            "lockout_recovery_enabled": False,
+            "lockout_recovery_delay_minutes": 15,
+            "shutdown_after_lockout": True,
+        }
 
     @staticmethod
     def _status_from_state(s) -> Dict[str, Any]:
@@ -176,9 +205,24 @@ class Controller:
         ok, err = self._direct_write_unavailable()
         if not ok:
             return False, err
-        s = self._load_state()
+        repair_untrusted = False
+        try:
+            s = self._load_state()
+        except (StateTamperedError, StateMissingError):
+            repair_untrusted = True
+            s = None
         if s is None:
-            return False, "not_initialized"
+            if not repair_untrusted:
+                return False, "not_initialized"
+            if len(new_password) < MIN_PASSWORD_LENGTH:
+                return False, "password_too_short"
+            try:
+                if not RecoveryStore().verify(recovery_code):
+                    return False, "wrong_recovery_code"
+            except RecoveryTamperedError:
+                return False, "recovery_unavailable"
+            self.store.save(State(password_hash=hash_password(new_password), enabled=True))
+            return True, ""
         if len(new_password) < MIN_PASSWORD_LENGTH:
             return False, "password_too_short"
         try:

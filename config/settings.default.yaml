@@ -4,7 +4,7 @@
 # loads, and scroll stops are scanned immediately regardless.
 scan_interval_seconds: 3
 
-lockout_duration_seconds: 600  # fallback only — actual duration comes from State.lockout_duration_minutes
+lockout_duration_seconds: 900  # fallback only — actual duration comes from State.lockout_duration_minutes
 
 nudity:
   enabled: true

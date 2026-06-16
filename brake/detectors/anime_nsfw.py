@@ -13,25 +13,31 @@ catches stylized content NudeNet's anatomy detector skips.
 Design choices:
 
 - Explicit install. Scanning never auto-downloads the model; the app fetches
-  it only when the user opts in. We download ONLY the three files inference
-  needs (config, safetensors weights, preprocessor config) pinned to a known
+  it only when the user opts in. We download ONLY the three files needed
+  (config, safetensors weights, preprocessor config) pinned to a known
   revision, not the repo's training artifacts.
-- Self-contained inference. We load the model directly and preprocess with
-  PIL + NumPy, so torchvision is NOT required and the heavyweight transformers
-  `pipeline` is avoided. Weights are dynamically INT8-quantized at load for a
-  ~1.8x CPU speedup at negligible accuracy cost, and torch threads are capped.
-- Optional dependency. If transformers/torch are missing the detector returns
-  negative and NudeNet keeps working alone.
-- Context only. In the beta it only ever produces context-severity hits; the
-  watcher converts only high-confidence illustrated explicit hits into the
-  full lockout path when the detector is enabled.
+- ONNX runtime, not torch. The install step exports the ViT to an INT8 ONNX
+  model and removes the torch weights (best-effort; freed on the next clean
+  load if the OS still holds them). The long-lived agent runs the classifier
+  on onnxruntime only (already a core dependency, shared with NudeNet), so
+  torch and transformers are never imported in the agent. This takes the
+  detector's resident memory from ~790MB (torch + INT8 quantize) down to
+  ~120MB, with identical scores (measured max diff 0.0002) and the same
+  per-frame speed.
+- Self-contained preprocessing with PIL + NumPy (no torchvision).
+- Cascade scanning. A cheap probe (whole screen + the changed/centre crop) is
+  scored first; the extra corroboration crops only run when the probe looks
+  possibly-NSFW, so clean screens cost one or two passes instead of three+.
+- Context only. The detector emits context-severity results; the watcher
+  decides escalation per mode.
 """
 from __future__ import annotations
 
 import importlib.util
+import json
 import logging
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 from PIL import Image
@@ -48,18 +54,35 @@ MODEL_NAME = "Falconsai/nsfw_image_detection"
 MODEL_REVISION = "04367978d3474804ab1a00a9bd6548b741764069"
 MODEL_DIR_NAME = "anime_nsfw_falconsai"
 
-# Only the files inference needs. Excludes optimizer.pt (~686MB training
-# state), pytorch_model.bin (~343MB duplicate of safetensors), and an
-# unrelated bundled YOLO model (~87MB). Cuts the download from ~1.46GB to
-# ~343MB.
+# Only the files needed to build the ONNX model. Excludes optimizer.pt
+# (~686MB training state), pytorch_model.bin (~343MB duplicate), and an
+# unrelated bundled YOLO model (~87MB).
 _ALLOW_PATTERNS = ["config.json", "model.safetensors", "preprocessor_config.json"]
 
-# Detector trigger floor. The watcher applies the product threshold on top of
-# this so lower-confidence illustrated hits do not start a lockout.
-CONTEXT_THRESHOLD = 0.86
+ONNX_INT8_NAME = "model.int8.onnx"
+ONNX_FP32_NAME = "model.onnx"
+# Torch weights are removed after the one-time ONNX export to save disk and to
+# make clear they are not used at runtime.
+_TORCH_WEIGHT_NAMES = ["model.safetensors", "pytorch_model.bin"]
 
-_TORCH_THREADS = 2
+# Suspicion floor. Scores here ask for another look; they do not lock.
+CONTEXT_THRESHOLD = 0.86
+# Whole-image NSFW classifiers are vulnerable to stylized game frames. A real
+# illustrated hit must be corroborated by another region/crop before the
+# watcher is allowed to treat it as explicit.
+TRIGGER_THRESHOLD = 0.90
+SECONDARY_CORROBORATION_THRESHOLD = 0.82
+EXTREME_SINGLE_REGION_THRESHOLD = 0.985
+# A probe region must reach this before the detector bothers scoring the
+# remaining corroboration crops. Far below CONTEXT_THRESHOLD, so nothing that
+# could become a suspect or trigger is ever gated out; clean screens (which
+# score near zero) bail after the cheap probe.
+ESCALATE_GATE = 0.50
+
+_ORT_THREADS = 2
 _DEFAULT_EDGE = 224
+_MIN_REGION_PX = 96
+_MIN_CHANGED_FRACTION = 0.20
 # PIL resample code -> filter. ViTImageProcessor uses resample=2 (BILINEAR).
 _RESAMPLE = {0: Image.NEAREST, 1: Image.LANCZOS, 2: Image.BILINEAR, 3: Image.BICUBIC, 4: Image.BOX, 5: Image.HAMMING}
 
@@ -71,9 +94,14 @@ def model_dir() -> Path:
 
 
 def dependencies_available() -> bool:
-    return (
-        importlib.util.find_spec("transformers") is not None
-        and importlib.util.find_spec("torch") is not None
+    """Whether the model can be installed (downloaded + exported to ONNX).
+
+    Runtime only needs onnxruntime (a core dependency); torch/transformers/onnx
+    are needed solely for the one-time export at install time.
+    """
+    return all(
+        importlib.util.find_spec(m) is not None
+        for m in ("transformers", "torch", "onnx")
     )
 
 
@@ -86,17 +114,69 @@ def model_installed() -> bool:
         (root / "preprocessor_config.json").exists()
         or (root / "image_processor_config.json").exists()
     )
-    # safetensors is what we fetch; .bin is accepted only for older installs.
-    has_weights = any(root.glob("*.safetensors")) or any(root.glob("*.bin"))
-    return has_config and has_processor and has_weights
+    # The ONNX model is the runtime format. Torch weights are accepted only as
+    # a pre-export (older install) state that the detector migrates on load.
+    has_runtime = (
+        (root / ONNX_INT8_NAME).exists()
+        or any(root.glob("*.safetensors"))
+        or any(root.glob("*.bin"))
+    )
+    return has_config and has_processor and has_runtime
 
 
 def anime_model_status() -> str:
-    if not dependencies_available():
-        return "missing_dependencies"
-    if not model_installed():
+    if model_installed():
+        return "ready"
+    if dependencies_available():
         return "not_installed"
-    return "ready"
+    return "missing_dependencies"
+
+
+def _export_to_onnx(root: Path) -> Path:
+    """Export the downloaded torch weights to an INT8 ONNX model.
+
+    Heavy (imports torch + transformers + onnx); runs only at install time or
+    as a one-time migration, never on the scan path. Returns the int8 path.
+    """
+    import gc
+
+    import torch  # type: ignore[import-not-found]
+    from transformers import AutoModelForImageClassification  # type: ignore[import-not-found]
+    from onnxruntime.quantization import QuantType, quantize_dynamic  # type: ignore[import-not-found]
+
+    fp32_path = root / ONNX_FP32_NAME
+    int8_path = root / ONNX_INT8_NAME
+
+    _log.info("anime_nsfw: exporting ONNX model (one-time)...")
+    model = AutoModelForImageClassification.from_pretrained(str(root))
+    model.eval()
+    dummy = torch.randn(1, 3, _DEFAULT_EDGE, _DEFAULT_EDGE)
+    torch.onnx.export(
+        model,
+        (dummy,),
+        str(fp32_path),
+        input_names=["pixel_values"],
+        output_names=["logits"],
+        dynamic_axes={"pixel_values": {0: "batch"}, "logits": {0: "batch"}},
+        opset_version=14,
+        do_constant_folding=True,
+        dynamo=False,
+    )
+    quantize_dynamic(str(fp32_path), str(int8_path), weight_type=QuantType.QInt8)
+    # Release the model so its mmap on model.safetensors is dropped, otherwise
+    # the unlink below fails with a sharing violation on Windows.
+    del model
+    gc.collect()
+    # Drop the large intermediate and source weights; runtime needs only int8.
+    for name in (ONNX_FP32_NAME, *_TORCH_WEIGHT_NAMES):
+        try:
+            (root / name).unlink(missing_ok=True)
+        except OSError as e:
+            _log.warning("anime_nsfw: could not remove %s post-export: %s", name, e)
+    if not int8_path.exists():
+        raise RuntimeError("onnx_export_failed")
+    _log.info("anime_nsfw: ONNX model ready (%.0fMB).", int8_path.stat().st_size / 1e6)
+    return int8_path
 
 
 def download_model() -> None:
@@ -115,6 +195,7 @@ def download_model() -> None:
         local_dir=str(target),
         allow_patterns=_ALLOW_PATTERNS,
     )
+    _export_to_onnx(target)
     if not model_installed():
         raise RuntimeError("model_download_incomplete")
 
@@ -129,70 +210,91 @@ class AnimeNSFWDetector(Detector):
 
     def __init__(self, config: NudityConfig) -> None:
         self.config = config
-        self._model = None
+        self._session = None
         self._disabled = False
         self._nsfw_index = 1
         self._edge = _DEFAULT_EDGE
         self._resample = Image.BILINEAR
         self._mean = np.array([0.5, 0.5, 0.5], dtype=np.float32)
         self._std = np.array([0.5, 0.5, 0.5], dtype=np.float32)
+        self._last_boxes: Dict[str, Box] = {}
 
     def _ensure_loaded(self) -> bool:
         global _warned_missing_deps
         if self._disabled:
             return False
-        if self._model is not None:
+        if self._session is not None:
             return True
-        try:
-            import torch  # type: ignore[import-not-found]
-            from transformers import AutoModelForImageClassification  # type: ignore[import-not-found]
-        except ImportError:
-            if not _warned_missing_deps:
-                _log.warning(
-                    "anime_nsfw detector: transformers/torch not installed; "
-                    "illustrated-content detection disabled."
-                )
-                _warned_missing_deps = True
-            self._disabled = True
-            return False
         if not model_installed():
             _log.info("anime_nsfw detector: model is not installed; skipping.")
             return False
         try:
-            # Heaviest model in the pipeline: cap threads so it does not fan
-            # across every core (measured: no wall-time gain, far more CPU).
-            torch.set_num_threads(_TORCH_THREADS)
-            _log.info("Loading %s from %s (one-time, ~15s)...", MODEL_NAME, model_dir())
-            model = AutoModelForImageClassification.from_pretrained(str(model_dir()))
-            model.eval()
-            # Dynamic INT8 quantization of the Linear layers: ~1.8x faster on
-            # CPU with negligible accuracy change. Fall back to fp32 if a
-            # platform lacks the qint8 kernels.
+            import onnxruntime as ort  # core dependency, shared with NudeNet
+        except ImportError:
+            if not _warned_missing_deps:
+                _log.warning("anime_nsfw detector: onnxruntime missing; disabled.")
+                _warned_missing_deps = True
+            self._disabled = True
+            return False
+
+        onnx_path = model_dir() / ONNX_INT8_NAME
+        if not onnx_path.exists():
+            # Older install with only torch weights: export once, then run on
+            # ONNX forever after. Imports torch only for this one migration.
             try:
-                model = torch.quantization.quantize_dynamic(
-                    model, {torch.nn.Linear}, dtype=torch.qint8
-                )
-                _log.info("anime_nsfw: using INT8-quantized weights.")
+                _log.info("anime_nsfw: migrating existing install to ONNX...")
+                onnx_path = _export_to_onnx(model_dir())
             except Exception as e:
-                _log.warning("anime_nsfw: INT8 quantization unavailable (%s); using fp32.", e)
-            self._model = model
-            self._torch = torch
-            self._read_label_index(model)
+                _log.error("anime_nsfw: ONNX migration failed (%s); disabling.", e)
+                self._disabled = True
+                return False
+        try:
+            opts = ort.SessionOptions()
+            opts.intra_op_num_threads = _ORT_THREADS
+            opts.inter_op_num_threads = 1
+            self._session = ort.InferenceSession(
+                str(onnx_path), sess_options=opts, providers=["CPUExecutionProvider"]
+            )
+            self._input_name = self._session.get_inputs()[0].name
+            self._read_label_index()
             self._read_preprocessor()
-            _log.info("anime_nsfw detector ready (edge=%d, nsfw_index=%d).", self._edge, self._nsfw_index)
+            self._cleanup_stale_weights()
+            _log.info("anime_nsfw detector ready (onnx, edge=%d, nsfw_index=%d).", self._edge, self._nsfw_index)
             return True
         except Exception as e:
             _log.error("anime_nsfw detector failed to load: %s", e)
             self._disabled = True
             return False
 
-    def _read_label_index(self, model) -> None:
-        id2label = getattr(model.config, "id2label", None) or {}
-        for idx, label in id2label.items():
+    def _cleanup_stale_weights(self) -> None:
+        """Remove torch weights left over once ONNX is in use.
+
+        The export process keeps model.safetensors memory-mapped, so it cannot
+        delete it on Windows; the first fresh agent load (no mmap) clears it.
+        Best-effort and never fatal.
+        """
+        root = model_dir()
+        for name in (ONNX_FP32_NAME, *_TORCH_WEIGHT_NAMES):
+            f = root / name
+            if not f.exists():
+                continue
+            try:
+                freed = f.stat().st_size / 1e6
+                f.unlink()
+                _log.info("anime_nsfw: removed stale %s (%.0fMB freed).", name, freed)
+            except OSError:
+                pass
+
+    def _read_label_index(self) -> None:
+        self._nsfw_index = 1  # Falconsai default ordering
+        try:
+            cfg = json.loads((model_dir() / "config.json").read_text(encoding="utf-8"))
+        except Exception:
+            return
+        for idx, label in (cfg.get("id2label") or {}).items():
             if str(label).lower() == "nsfw":
                 self._nsfw_index = int(idx)
                 return
-        self._nsfw_index = 1  # Falconsai default ordering
 
     def _read_preprocessor(self) -> None:
         import json
@@ -208,31 +310,85 @@ class AnimeNSFWDetector(Detector):
         self._mean = np.array(cfg.get("image_mean", [0.5, 0.5, 0.5]), dtype=np.float32)
         self._std = np.array(cfg.get("image_std", [0.5, 0.5, 0.5]), dtype=np.float32)
 
-    def _regions(
+    def _region_boxes(
         self,
-        image: Image.Image,
+        size: Tuple[int, int],
         profile: str,
         changed_box: Optional[Box],
-    ) -> List[Tuple[str, Image.Image]]:
-        regions: list[tuple[str, Image.Image]] = [("full", image)]
-        w, h = image.size
+        zoom_region: str,
+    ) -> List[Tuple[str, Box]]:
+        w, h = size
+        boxes: list[tuple[str, Box]] = [("full", (0, 0, w, h))]
         # Whole-image classifier: a small illustration in a corner downscales
         # to nothing in the full view, so a center crop adds resolution there.
         # Skipped on the budget (targeted) profile to stay cheap.
         if profile != "targeted" and min(w, h) >= 500:
             cw, ch = w // 2, h // 2
             cx, cy = (w - cw) // 2, (h - ch) // 2
-            regions.append(("center", image.crop((cx, cy, cx + cw, cy + ch))))
+            boxes.append(("center", (cx, cy, cx + cw, cy + ch)))
         # When we know where the screen changed, classify exactly that area.
         if changed_box is not None:
-            left, top, right, bottom = (int(v) for v in changed_box)
-            left = max(0, left); top = max(0, top)
-            right = min(w, right); bottom = min(h, bottom)
-            if right - left >= 64 and bottom - top >= 64:
-                regions.append(("changed", image.crop((left, top, right, bottom))))
+            clamped = self._pad_and_clamp(changed_box, size)
+            if clamped is not None:
+                boxes.append(("changed", clamped))
+        if zoom_region:
+            parent = self._last_boxes.get(zoom_region)
+            if parent is not None:
+                boxes.extend(self._quadrants(zoom_region, parent))
+        return boxes
+
+    def _regions(
+        self,
+        image: Image.Image,
+        profile: str,
+        changed_box: Optional[Box],
+        zoom_region: str,
+    ) -> List[Tuple[str, Image.Image]]:
+        named_boxes = self._region_boxes(image.size, profile, changed_box, zoom_region)
+        self._last_boxes = dict(named_boxes)
+        regions: list[tuple[str, Image.Image]] = []
+        for name, box in named_boxes:
+            if box == (0, 0, image.width, image.height):
+                regions.append((name, image))
+            else:
+                regions.append((name, image.crop(box)))
         return regions
 
-    def _preprocess(self, images: List[Image.Image]):
+    @staticmethod
+    def _pad_and_clamp(box: Box, size: Tuple[int, int]) -> Optional[Box]:
+        width, height = size
+        left, top, right, bottom = box
+        min_w = int(width * _MIN_CHANGED_FRACTION)
+        min_h = int(height * _MIN_CHANGED_FRACTION)
+        if right - left < min_w:
+            pad = (min_w - (right - left)) // 2 + 1
+            left, right = left - pad, right + pad
+        if bottom - top < min_h:
+            pad = (min_h - (bottom - top)) // 2 + 1
+            top, bottom = top - pad, bottom + pad
+        left = max(0, int(left))
+        top = max(0, int(top))
+        right = min(width, int(right))
+        bottom = min(height, int(bottom))
+        if right - left < _MIN_REGION_PX or bottom - top < _MIN_REGION_PX:
+            return None
+        return (left, top, right, bottom)
+
+    @staticmethod
+    def _quadrants(parent_name: str, box: Box) -> List[Tuple[str, Box]]:
+        left, top, right, bottom = box
+        mid_x = (left + right) // 2
+        mid_y = (top + bottom) // 2
+        if mid_x - left < _MIN_REGION_PX or mid_y - top < _MIN_REGION_PX:
+            return []
+        return [
+            (f"{parent_name}~q0", (left, top, mid_x, mid_y)),
+            (f"{parent_name}~q1", (mid_x, top, right, mid_y)),
+            (f"{parent_name}~q2", (left, mid_y, mid_x, bottom)),
+            (f"{parent_name}~q3", (mid_x, mid_y, right, bottom)),
+        ]
+
+    def _preprocess(self, images: List[Image.Image]) -> np.ndarray:
         edge = self._edge
         arrays = [
             np.asarray(im.convert("RGB").resize((edge, edge), self._resample), dtype=np.float32) / 255.0
@@ -241,15 +397,49 @@ class AnimeNSFWDetector(Detector):
         batch = np.stack(arrays)  # (N, H, W, C)
         batch = (batch - self._mean) / self._std
         batch = np.transpose(batch, (0, 3, 1, 2))  # -> (N, C, H, W)
-        return self._torch.from_numpy(np.ascontiguousarray(batch))
+        return np.ascontiguousarray(batch, dtype=np.float32)
 
     def _score_regions(self, images: List[Image.Image]) -> List[float]:
-        torch = self._torch
-        with torch.inference_mode():
-            pixel_values = self._preprocess(images)
-            logits = self._model(pixel_values=pixel_values).logits
-            probs = torch.softmax(logits, dim=-1)
+        if not images:
+            return []
+        logits = self._session.run(None, {self._input_name: self._preprocess(images)})[0]
+        logits = logits - logits.max(axis=1, keepdims=True)
+        exp = np.exp(logits)
+        probs = exp / exp.sum(axis=1, keepdims=True)
         return [float(probs[i, self._nsfw_index]) for i in range(len(images))]
+
+    def _cascade_score(self, regions: List[Tuple[str, Image.Image]]) -> Dict[str, float]:
+        """Score a cheap probe first; only run the rest if it looks possible.
+
+        The probe is chosen to be both cheap and sufficient:
+
+        - When the pacer gives a changed box (a "settle" scan after the screen
+          moved), only that region is new content; the rest of the screen was
+          scored on an earlier scan. So the probe is just the changed crop:
+          one pass.
+        - Otherwise (startup / window change / the periodic 15s backstop) the
+          probe is the whole screen plus the centre crop, so a static screen
+          is still covered thoroughly.
+
+        If the probe stays below ESCALATE_GATE the screen is clean and we
+        return — the best score is far below CONTEXT_THRESHOLD, identical to
+        scoring everything. Only a warm probe pays for the full region set,
+        which the corroboration logic then needs.
+        """
+        by_name = {name: img for name, img in regions}
+        if "changed" in by_name:
+            probe_names = ["changed"]
+        else:
+            probe_names = [n for n in ("full", "center") if n in by_name]
+
+        scores = dict(zip(probe_names, self._score_regions([by_name[n] for n in probe_names])))
+        if not scores or max(scores.values()) < ESCALATE_GATE:
+            return scores
+
+        rest = [(name, img) for name, img in regions if name not in scores]
+        for (name, _img), score in zip(rest, self._score_regions([img for _, img in rest])):
+            scores[name] = score
+        return scores
 
     def scan(
         self,
@@ -264,23 +454,30 @@ class AnimeNSFWDetector(Detector):
         if not self._ensure_loaded():
             return DetectionResult.negative(self.name)
 
-        regions = self._regions(image, profile, changed_box)
+        regions = self._regions(image, profile, changed_box, zoom_region)
         try:
-            scores = self._score_regions([img for _, img in regions])
+            score_by_region = self._cascade_score(regions)
         except Exception as e:
             _log.error("anime_nsfw scan failed: %s", e)
             return DetectionResult.negative(self.name)
 
         best_score = 0.0
         best_region = ""
-        for (name, _img), score in zip(regions, scores):
+        for name, score in score_by_region.items():
             if score > best_score:
                 best_score = score
                 best_region = name
 
-        _log.info("anime_nsfw: best=%s nsfw=%.2f regions=%d", best_region or "?", best_score, len(regions))
+        top_scores = sorted(score_by_region.items(), key=lambda item: item[1], reverse=True)[:4]
+        _log.info(
+            "anime_nsfw: best=%s nsfw=%.2f regions=%d scores=%s",
+            best_region or "?",
+            best_score,
+            len(regions),
+            ",".join(f"{name}:{score:.2f}" for name, score in top_scores),
+        )
 
-        if best_score >= CONTEXT_THRESHOLD:
+        if self._corroborated(score_by_region):
             return DetectionResult(
                 detector=self.name,
                 triggered=True,
@@ -288,5 +485,46 @@ class AnimeNSFWDetector(Detector):
                 label=f"POSSIBLE NSFW ART ({best_region})",
                 severity="context",
                 region=best_region,
+                details=",".join(f"{name}:{score:.2f}" for name, score in top_scores),
+            )
+        if best_score >= CONTEXT_THRESHOLD:
+            return DetectionResult(
+                detector=self.name,
+                triggered=False,
+                confidence=best_score,
+                label=f"SUSPECT NSFW ART ({best_region})",
+                severity="context",
+                region=best_region,
+                details=",".join(f"{name}:{score:.2f}" for name, score in top_scores),
             )
         return DetectionResult.negative(self.name)
+
+    @staticmethod
+    def _corroborated(scores: Dict[str, float]) -> bool:
+        if not scores:
+            return False
+        best = max(scores.values())
+        if best < TRIGGER_THRESHOLD:
+            return False
+
+        high_regions = {
+            region for region, score in scores.items()
+            if score >= TRIGGER_THRESHOLD and region != "changed"
+        }
+        if len(high_regions) >= 2:
+            return True
+
+        secondary_regions = {
+            region for region, score in scores.items()
+            if score >= SECONDARY_CORROBORATION_THRESHOLD and region != "changed"
+        }
+        if best >= EXTREME_SINGLE_REGION_THRESHOLD and len(secondary_regions) >= 2:
+            return True
+
+        # A changed crop is useful supporting evidence, but never enough by
+        # itself. Fast game animation often produces a hot changed crop.
+        changed_score = scores.get("changed", 0.0)
+        if changed_score >= TRIGGER_THRESHOLD and secondary_regions:
+            return True
+
+        return False

@@ -13,7 +13,7 @@ from typing import Any, Dict, Optional
 
 from brake.detectors.anime_nsfw import anime_model_status
 from brake.ipc.protocol import Command, PIPE_NAME, decode, encode
-from brake.state import StateStore, StateTamperedError
+from brake.state import State, StateMissingError, StateStore, StateTamperedError
 from brake.state.crypto import MIN_PASSWORD_LENGTH, hash_password, is_backdoor, verify_password
 from brake.state.recovery import RecoveryStore, RecoveryTamperedError
 from brake.state.recovery_unlock import apply_due_recovery_unlock, schedule_recovery_unlock
@@ -25,6 +25,12 @@ from brake.state.schema import (
 )
 
 _log = logging.getLogger(__name__)
+
+
+class StateUnavailableError(RuntimeError):
+    def __init__(self, detail: str) -> None:
+        super().__init__(detail)
+        self.detail = detail
 
 
 class IPCServer(threading.Thread):
@@ -188,6 +194,8 @@ class IPCServer(threading.Thread):
                 str(req.get("password", "")),
             )
             return {"ok": False, "error": f"unknown_command:{cmd}"}
+        except StateUnavailableError as e:
+            return {"ok": False, "error": "state_untrusted", "detail": e.detail}
         except Exception as e:
             _log.exception("dispatch error: %s", e)
             return {"ok": False, "error": str(e)}
@@ -198,11 +206,36 @@ class IPCServer(threading.Thread):
             if s is not None:
                 s = apply_due_recovery_unlock(self.store, s)
             return s
-        except StateTamperedError as e:
-            raise RuntimeError(f"state_tampered: {e}")
+        except (StateTamperedError, StateMissingError) as e:
+            raise StateUnavailableError(str(e)) from e
+
+    @staticmethod
+    def _fail_secure_status(error: str) -> Dict[str, Any]:
+        return {
+            "initialized": True,
+            "enabled": True,
+            "fail_secure": True,
+            "state_error": error,
+            "lockout_duration_minutes": 15,
+            "committed_until": None,
+            "commitment_active": False,
+            "detection_sensitivity": "balanced",
+            "anime_detection_enabled": False,
+            "anime_detection_mode": "standard",
+            "anime_model_status": anime_model_status(),
+            "recovery_unlock_after": None,
+            "recovery_unlock_pending": False,
+            "recovery_unlock_delay_minutes": 15,
+            "lockout_recovery_enabled": False,
+            "lockout_recovery_delay_minutes": 15,
+            "shutdown_after_lockout": True,
+        }
 
     def _cmd_status(self) -> Dict[str, Any]:
-        s = self._state()
+        try:
+            s = self._state()
+        except StateUnavailableError as e:
+            return {"ok": True, "data": self._fail_secure_status(e.detail)}
         if s is None:
             return {"ok": True, "data": {"initialized": False}}
         return {"ok": True, "data": {
@@ -265,8 +298,23 @@ class IPCServer(threading.Thread):
         return {"ok": True}
 
     def _cmd_reset_password(self, recovery_code: str, new_password: str) -> Dict[str, Any]:
-        s = self._state()
+        repair_untrusted = False
+        try:
+            s = self._state()
+        except StateUnavailableError:
+            repair_untrusted = True
+            s = None
         if s is None:
+            if repair_untrusted:
+                if len(new_password) < MIN_PASSWORD_LENGTH:
+                    return {"ok": False, "error": "password_too_short"}
+                try:
+                    if not RecoveryStore().verify(recovery_code):
+                        return {"ok": False, "error": "wrong_recovery_code"}
+                except RecoveryTamperedError:
+                    return {"ok": False, "error": "recovery_unavailable"}
+                self.store.save(State(password_hash=hash_password(new_password), enabled=True))
+                return {"ok": True}
             return {"ok": False, "error": "not_initialized"}
         if len(new_password) < MIN_PASSWORD_LENGTH:
             return {"ok": False, "error": "password_too_short"}

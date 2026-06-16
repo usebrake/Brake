@@ -10,6 +10,7 @@ import {
   Plus,
   Power,
   ScanEye,
+  ScrollText,
   ShieldCheck,
   ShieldOff,
   X
@@ -20,6 +21,8 @@ import { useEffect, useRef, useState } from "react";
 const fallbackStatus = {
   initialized: true,
   enabled: false,
+  failSecure: false,
+  stateError: "",
   commitmentActive: false,
   committedUntil: null,
   lockoutDurationMinutes: 15,
@@ -108,11 +111,81 @@ function animeStatusCopy(status) {
   return labels[status] || "Not installed";
 }
 
+function detectorCopy(detector) {
+  if (detector === "anime_nsfw") return "Illustrated";
+  if (detector === "nudity") return "Regular";
+  return detector || "Detector";
+}
+
+function eventSeverityCopy(event) {
+  if (event.severity === "hard") return "Hard";
+  if (event.triggered) return "Light";
+  return "Suspicion";
+}
+
+function eventTimeCopy(ts) {
+  const date = new Date(ts);
+  if (!Number.isFinite(date.getTime())) return "Unknown";
+  return date.toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  });
+}
+
+function confidenceCopy(confidence) {
+  const value = Number(confidence);
+  if (!Number.isFinite(value) || value <= 0) return "";
+  return `${Math.round(value * 100)}%`;
+}
+
+function DetectionLogs({ events, loading, onRefresh }) {
+  return (
+    <Card icon={ScrollText} title="Detection events" subtitle="Only meaningful detector hits are shown here. Clean scans are not logged.">
+      <div className="log-toolbar">
+        <span>{events.length ? `${events.length} recent ${events.length === 1 ? "event" : "events"}` : loading ? "Loading..." : "No detection events yet"}</span>
+        <button className="pill-action" onClick={onRefresh}>Refresh</button>
+      </div>
+      {events.length ? (
+        <div className="log-list">
+          {events.map((event, index) => (
+            <div className="log-row" key={`${event.ts}-${event.detector}-${event.label}-${index}`}>
+              <div className="log-time">{eventTimeCopy(event.ts)}</div>
+              <div className="log-main">
+                <div className="log-title">
+                  <span>{detectorCopy(event.detector)}</span>
+                  <Badge state={event.severity === "hard" ? "committed" : event.triggered ? "protected" : ""}>
+                    {eventSeverityCopy(event)}
+                  </Badge>
+                </div>
+                <div className="log-label">{event.label}</div>
+                <div className="log-meta">
+                  {confidenceCopy(event.confidence) ? <span>{confidenceCopy(event.confidence)}</span> : null}
+                  {event.region ? <span>{event.region}</span> : null}
+                  {event.action ? <span>{event.action}</span> : null}
+                  {event.scanReason ? <span>{event.scanReason}</span> : null}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="empty-log">
+          <h3>No detections recorded</h3>
+          <p>Brake will list regular and illustrated detector hits here when they happen.</p>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function StatusPanel({ status, now, onToggleProtection }) {
   const committed = status.commitmentActive;
-  const enabled = status.enabled;
+  const failSecure = status.failSecure;
+  const enabled = status.enabled || failSecure;
   const recoveryLeft = status.recoveryUnlockPending ? formatRecoveryUnlockLeft(status.recoveryUnlockAfter, now) : "";
-  const state = committed ? "committed" : enabled ? "protected" : "off";
+  const state = failSecure ? "protected" : committed ? "committed" : enabled ? "protected" : "off";
   const commitmentLeft = committed && !recoveryLeft ? formatCommitmentLeft(status.committedUntil, now) : "";
 
   return (
@@ -121,8 +194,8 @@ function StatusPanel({ status, now, onToggleProtection }) {
       <button
         className="status-icon status-toggle"
         type="button"
-        aria-label={enabled ? "Turn off protection" : "Turn on protection"}
-        title={enabled ? "Turn off protection" : "Turn on protection"}
+        aria-label={failSecure ? "Repair protection" : enabled ? "Turn off protection" : "Turn on protection"}
+        title={failSecure ? "Repair protection" : enabled ? "Turn off protection" : "Turn on protection"}
         onClick={onToggleProtection}
       >
         {enabled || committed ? (
@@ -132,10 +205,12 @@ function StatusPanel({ status, now, onToggleProtection }) {
         )}
       </button>
       <div className="status-copy">
-        <div className="eyebrow">{recoveryLeft ? "RECOVERY COOLDOWN" : committed ? "COMMITTED" : enabled ? "PROTECTED" : "OFF"}</div>
-        <h2>{recoveryLeft ? "Emergency unlock pending" : committed ? "Commitment active" : enabled ? "Protection is active" : "Protection is off"}</h2>
+        <div className="eyebrow">{failSecure ? "SAFEGUARD ACTIVE" : recoveryLeft ? "RECOVERY COOLDOWN" : committed ? "COMMITTED" : enabled ? "PROTECTED" : "OFF"}</div>
+        <h2>{failSecure ? "Protection needs repair" : recoveryLeft ? "Emergency unlock pending" : committed ? "Commitment active" : enabled ? "Protection is active" : "Protection is off"}</h2>
         <p>
-          {recoveryLeft
+          {failSecure
+            ? "Brake could not verify its settings, so screen checks stay active. Use your recovery code to repair protection."
+            : recoveryLeft
             ? "Recovery accepted. Brake will turn protection off after the cooldown."
             : committed
             ? "Your commitment is active. Password disable is unavailable until it ends."
@@ -146,7 +221,7 @@ function StatusPanel({ status, now, onToggleProtection }) {
         {commitmentLeft ? <p className="status-meta">{commitmentLeft}</p> : null}
         {recoveryLeft ? <p className="status-meta">{recoveryLeft}</p> : null}
       </div>
-      <Badge state={state}>{recoveryLeft ? recoveryLeft : committed ? "Locked in" : enabled ? "Active" : "Idle"}</Badge>
+      <Badge state={state}>{failSecure ? "Repair required" : recoveryLeft ? recoveryLeft : committed ? "Locked in" : enabled ? "Active" : "Idle"}</Badge>
     </section>
   );
 }
@@ -604,6 +679,8 @@ export default function App() {
   const [confirmPrompt, setConfirmPrompt] = useState(null);
   const [settingsPasswordPrompt, setSettingsPasswordPrompt] = useState(null);
   const [animeInstalling, setAnimeInstalling] = useState(false);
+  const [detectionEvents, setDetectionEvents] = useState([]);
+  const [logsLoading, setLogsLoading] = useState(false);
   const [now, setNow] = useState(Date.now());
   const durationSaveTimer = useRef(null);
   const recoverySaveTimer = useRef(null);
@@ -618,6 +695,18 @@ export default function App() {
   const commitmentIncreaseConfirmUntil = useRef(0);
   const recoveryIncreaseConfirmUntil = useRef(0);
 
+  const refreshDetectionLogs = () => {
+    setLogsLoading(true);
+    window.brake?.detectionLogs?.().then((response) => {
+      setLogsLoading(false);
+      if (response?.ok) {
+        setDetectionEvents(Array.isArray(response.data?.events) ? response.data.events : []);
+      } else {
+        setNotice(humanError(response?.error || "Detection logs are unavailable."));
+      }
+    });
+  };
+
   useEffect(() => {
     let alive = true;
     const refresh = () => {
@@ -631,6 +720,10 @@ export default function App() {
       });
     };
     refresh();
+    window.brake?.detectionLogs?.().then((response) => {
+      if (!alive || !response?.ok) return;
+      setDetectionEvents(Array.isArray(response.data?.events) ? response.data.events : []);
+    });
     window.brake?.ensureRecovery?.().then((response) => {
       if (!alive || !response?.ok || !response.data?.token) return;
       setRecoveryPrompt({ token: response.data.token, regenerated: false });
@@ -646,7 +739,14 @@ export default function App() {
     };
   }, []);
 
-  const protectedTone = status.commitmentActive ? "amber" : status.enabled ? "teal" : "gold";
+  useEffect(() => {
+    if (tab !== "logs") return undefined;
+    refreshDetectionLogs();
+    const timer = window.setInterval(refreshDetectionLogs, 5000);
+    return () => window.clearInterval(timer);
+  }, [tab]);
+
+  const protectedTone = status.failSecure ? "amber" : status.commitmentActive ? "amber" : status.enabled ? "teal" : "gold";
   const recoverySnapshot = (source) => ({
     recoveryUnlockDelayMinutes: clampRecoveryMinutes(source?.recoveryUnlockDelayMinutes),
     lockoutRecoveryEnabled: Boolean(source?.lockoutRecoveryEnabled),
@@ -700,6 +800,10 @@ export default function App() {
     }, 180);
   };
   const toggleProtection = () => {
+    if (status.failSecure) {
+      setResetPasswordPrompt({ error: "Brake could not verify settings. Use your recovery code to repair protection." });
+      return;
+    }
     setPasswordPrompt({ mode: status.enabled ? "disable" : "enable", error: "" });
   };
   const submitProtectionPassword = (password, localError = "") => {
@@ -1074,6 +1178,9 @@ export default function App() {
         <button className={tab === "illustrated" ? "active" : ""} onClick={() => setTab("illustrated")}>
           <ScanEye size={16} /> Illustrated
         </button>
+        <button className={tab === "logs" ? "active" : ""} onClick={() => setTab("logs")}>
+          <ScrollText size={16} /> Logs
+        </button>
         <button className={tab === "advanced" ? "active" : ""} onClick={() => setTab("advanced")}>
           <Activity size={16} /> Advanced
         </button>
@@ -1098,7 +1205,7 @@ export default function App() {
                       : "Lock protection in for a set time so your password cannot turn it off early."
                   }
                   aside={
-                    <button className={`pill-action ${status.commitmentActive ? "active" : ""}`} onClick={toggleCommitment}>
+                    <button className={`pill-action ${status.commitmentActive ? "active" : ""}`} disabled={status.failSecure} onClick={toggleCommitment}>
                       {status.commitmentActive ? "Extend commitment" : "No commitment set"}
                     </button>
                   }
@@ -1108,7 +1215,7 @@ export default function App() {
                   description="How long the screen stays locked after clear explicit content is detected."
                   aside={
                     <div className="stepper-control">
-                      <button aria-label="Decrease lockout length" onClick={() => changeDuration(-1)}>
+                      <button aria-label="Decrease lockout length" disabled={status.failSecure} onClick={() => changeDuration(-1)}>
                         <Minus size={14} />
                       </button>
                       <label>
@@ -1118,13 +1225,14 @@ export default function App() {
                           min="1"
                           max="60"
                           type="number"
+                          disabled={status.failSecure}
                           value={status.lockoutDurationMinutes}
                           onChange={(event) => changeDurationInput(event.target.value)}
                           onBlur={normalizeDurationInput}
                         />
                         <span>min</span>
                       </label>
-                      <button aria-label="Increase lockout length" onClick={() => changeDuration(1)}>
+                      <button aria-label="Increase lockout length" disabled={status.failSecure} onClick={() => changeDuration(1)}>
                         <Plus size={14} />
                       </button>
                     </div>
@@ -1152,7 +1260,7 @@ export default function App() {
                 aside={
                   <button
                     className={`pill-action ${status.animeDetectionEnabled ? "active" : ""}`}
-                    disabled={status.animeModelStatus !== "ready" || (status.commitmentActive && status.animeDetectionEnabled)}
+                    disabled={status.failSecure || status.animeModelStatus !== "ready" || (status.commitmentActive && status.animeDetectionEnabled)}
                     onClick={() => requestAnimeEnabled(!status.animeDetectionEnabled)}
                   >
                     {status.animeDetectionEnabled ? "On" : "Off"}
@@ -1163,13 +1271,22 @@ export default function App() {
                 <Button
                   variant="primary"
                   icon={Download}
-                  disabled={animeInstalling || status.animeModelStatus === "ready"}
+                  disabled={status.failSecure || animeInstalling || status.animeModelStatus === "ready"}
                   onClick={installAnimeDetector}
                 >
                   {animeInstalling ? "Installing..." : status.animeModelStatus === "ready" ? "Installed" : "Download detector"}
                 </Button>
               </div>
             </Card>
+          </>
+        ) : tab === "logs" ? (
+          <>
+            <div className="page-head">
+              <h1>Logs</h1>
+              <p>Recent detector hits only. Clean scans are intentionally hidden.</p>
+              {notice ? <p className="notice">{notice}</p> : null}
+            </div>
+            <DetectionLogs events={detectionEvents} loading={logsLoading} onRefresh={refreshDetectionLogs} />
           </>
         ) : (
           <>
@@ -1187,6 +1304,7 @@ export default function App() {
                     <MinuteStepper
                       ariaLabel="emergency recovery cooldown"
                       value={status.recoveryUnlockDelayMinutes}
+                      disabled={status.failSecure}
                       onChange={(value) => requestRecoverySettings({ recoveryUnlockDelayMinutes: value }, { debounce: true })}
                     />
                   }
@@ -1197,6 +1315,7 @@ export default function App() {
                   aside={
                     <button
                       className={`pill-action ${status.lockoutRecoveryEnabled ? "active" : ""}`}
+                      disabled={status.failSecure}
                       onClick={() => requestRecoverySettings({ lockoutRecoveryEnabled: !status.lockoutRecoveryEnabled })}
                     >
                       {status.lockoutRecoveryEnabled ? "On" : "Off"}
@@ -1209,7 +1328,7 @@ export default function App() {
                   aside={
                     <MinuteStepper
                       ariaLabel="lockout recovery cooldown"
-                      disabled={!status.lockoutRecoveryEnabled}
+                      disabled={status.failSecure || !status.lockoutRecoveryEnabled}
                       value={status.lockoutRecoveryDelayMinutes}
                       onChange={(value) => requestRecoverySettings({ lockoutRecoveryDelayMinutes: value }, { debounce: true })}
                     />
@@ -1223,7 +1342,7 @@ export default function App() {
                   aside={
                     <button
                       className={`pill-action ${status.shutdownAfterLockout ? "active" : ""}`}
-                      disabled={status.commitmentActive && status.shutdownAfterLockout}
+                      disabled={status.failSecure || (status.commitmentActive && status.shutdownAfterLockout)}
                       onClick={() => requestShutdownAfterLockout(!status.shutdownAfterLockout)}
                     >
                       {status.shutdownAfterLockout ? "On" : "Off"}
@@ -1231,7 +1350,7 @@ export default function App() {
                   }
                 />
                 <div className="card-actions">
-                  <Button variant="secondary" icon={ShieldCheck} onClick={testLockout}>
+                  <Button variant="secondary" icon={ShieldCheck} disabled={status.failSecure} onClick={testLockout}>
                     Test lockout
                   </Button>
                 </div>
@@ -1242,10 +1361,10 @@ export default function App() {
       </section>
 
       <footer className="actionbar">
-        <Button variant="primary" icon={status.enabled ? ShieldOff : ShieldCheck} onClick={toggleProtection}>
-          {status.enabled ? "Turn off protection" : "Turn on protection"}
+        <Button variant="primary" icon={status.failSecure ? KeyRound : status.enabled ? ShieldOff : ShieldCheck} onClick={toggleProtection}>
+          {status.failSecure ? "Repair with recovery code" : status.enabled ? "Turn off protection" : "Turn on protection"}
         </Button>
-        <Button variant="warning" onClick={toggleCommitment}>
+        <Button variant="warning" onClick={toggleCommitment} disabled={status.failSecure}>
           {status.commitmentActive ? "Extend commitment" : "Lock in commitment"}
         </Button>
         <div className="spacer" />
@@ -1338,6 +1457,7 @@ function humanError(error) {
     password_required: "Enter your password to make this less strict.",
     permission_denied: "Brake could not write settings. Restart Brake or run installer\\install.bat again.",
     service_unavailable: "Brake could not reach the background service. Restart Brake or run installer\\install.bat again.",
+    state_untrusted: "Brake could not verify its settings. Use your recovery code to repair protection.",
     anime_model_not_ready: "Download the illustrated detector before turning it on.",
     missing_dependencies: "Python is missing transformers or torch. Install requirements, then try again.",
     model_download_incomplete: "The detector download did not finish cleanly. Try again.",

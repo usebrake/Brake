@@ -258,6 +258,9 @@ app.whenReady().then(async () => {
   ipcMain.handle("brake:anime-download", async () => (
     queuedBackend("anime-download", [], 30 * 60 * 1000)
   ));
+  ipcMain.handle("brake:detection-logs", async () => (
+    queuedBackend("detection-logs", ["--limit", "100"])
+  ));
   ipcMain.handle("brake:set-commitment", async (_event, payload) => (
     queuedBackend("set-commitment", [
       "--until", String(payload?.until || ""),

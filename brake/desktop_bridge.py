@@ -13,6 +13,7 @@ import subprocess
 import sys
 from typing import Any
 
+from brake.detection_events import list_detection_events
 from brake.detectors.anime_nsfw import anime_model_status, download_model, model_dir
 from brake.gui.controller import Controller
 from brake.lockout.recovery import spawn_resume_lockout_if_needed
@@ -31,7 +32,10 @@ def _ensure_dev_state(controller: Controller) -> None:
         return
     if controller.service_up():
         return
-    if controller.store.load() is not None:
+    try:
+        if controller.store.load() is not None:
+            return
+    except Exception:
         return
     controller.store.save(State(password_hash=hash_password(DEV_PASSWORD), enabled=False))
 
@@ -41,6 +45,8 @@ def _status_payload(controller: Controller) -> dict[str, Any]:
     return {
         "initialized": bool(status.get("initialized", False)),
         "enabled": bool(status.get("enabled", False)),
+        "failSecure": bool(status.get("fail_secure", False)),
+        "stateError": str(status.get("state_error", "") or ""),
         "commitmentActive": bool(status.get("commitment_active", False)),
         "committedUntil": status.get("committed_until"),
         "lockoutDurationMinutes": int(status.get("lockout_duration_minutes", 15) or 15),
@@ -111,6 +117,8 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("anime-status")
     sub.add_parser("anime-download")
+    logs = sub.add_parser("detection-logs")
+    logs.add_argument("--limit", type=int, default=100)
 
     set_commitment = sub.add_parser("set-commitment")
     set_commitment.add_argument("--until", required=True)
@@ -191,6 +199,8 @@ def main(argv: list[str] | None = None) -> int:
                 "animeModelStatus": anime_model_status(),
                 "modelDir": str(model_dir()),
             })
+        elif args.cmd == "detection-logs":
+            payload = _ok({"events": list_detection_events(int(args.limit))})
         elif args.cmd == "set-commitment":
             ok, err = controller.set_commitment(str(args.until), str(args.password))
             payload = _ok(_status_payload(controller)) if ok else _error(err)

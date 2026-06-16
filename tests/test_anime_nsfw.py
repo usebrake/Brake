@@ -1,13 +1,12 @@
 """Tests for the illustrated/anime NSFW detector.
 
-Covers the lean download policy, model-installed detection, and the scan
-policy (threshold, region selection, batching, scan hints). The scoring tests
-use a tiny fake model so they do not need the 343MB weights, but they run the
-real preprocessing + region + softmax code path when torch is present.
+Covers the lean download + ONNX export policy, model-installed detection, the
+cascade (cheap probe then escalate), and the corroboration trigger policy.
+Scoring tests use a fake scorer / fake onnxruntime session so they need no
+weights, but they exercise the real preprocessing + softmax + region code.
 """
 from __future__ import annotations
 
-import importlib.util
 import sys
 import tempfile
 import types
@@ -17,23 +16,26 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+import numpy as np
 from PIL import Image
 
 from brake.config import NudityConfig
 from brake.detectors import anime_nsfw
 from brake.detectors.anime_nsfw import (
     CONTEXT_THRESHOLD,
+    ESCALATE_GATE,
     MODEL_REVISION,
+    ONNX_INT8_NAME,
+    TRIGGER_THRESHOLD,
     _ALLOW_PATTERNS,
     AnimeNSFWDetector,
     model_installed,
 )
 
-_HAS_TORCH = importlib.util.find_spec("torch") is not None
 
-
-def test_download_uses_lean_allowlist_and_pinned_revision() -> None:
+def test_download_lean_allowlist_pinned_revision_and_onnx_export() -> None:
     captured = {}
+    tmp = Path(tempfile.mkdtemp(prefix="brake-anime-dl-"))
 
     def fake_snapshot_download(**kwargs):
         captured.update(kwargs)
@@ -44,18 +46,23 @@ def test_download_uses_lean_allowlist_and_pinned_revision() -> None:
         (target / "model.safetensors").write_bytes(b"\x00")
         return str(target)
 
+    def fake_export(root):
+        (Path(root) / ONNX_INT8_NAME).write_bytes(b"\x00")
+        return Path(root) / ONNX_INT8_NAME
+
     fake_hub = types.ModuleType("huggingface_hub")
     fake_hub.snapshot_download = fake_snapshot_download
-    tmp = Path(tempfile.mkdtemp(prefix="brake-anime-dl-"))
-
     orig_hub = sys.modules.get("huggingface_hub")
     orig_model_dir = anime_nsfw.model_dir
+    orig_export = anime_nsfw._export_to_onnx
     sys.modules["huggingface_hub"] = fake_hub
     anime_nsfw.model_dir = lambda: tmp  # type: ignore[assignment]
+    anime_nsfw._export_to_onnx = fake_export  # type: ignore[assignment]
     try:
         anime_nsfw.download_model()
     finally:
         anime_nsfw.model_dir = orig_model_dir  # type: ignore[assignment]
+        anime_nsfw._export_to_onnx = orig_export  # type: ignore[assignment]
         if orig_hub is not None:
             sys.modules["huggingface_hub"] = orig_hub
         else:
@@ -63,13 +70,13 @@ def test_download_uses_lean_allowlist_and_pinned_revision() -> None:
 
     assert captured["allow_patterns"] == _ALLOW_PATTERNS
     assert captured["revision"] == MODEL_REVISION
-    # The wasteful artifacts must never be in the allowlist.
     for junk in ("optimizer.pt", "pytorch_model.bin", "falconsai_yolov9_nsfw_model_quantized.pt"):
         assert junk not in _ALLOW_PATTERNS
-    print("  [ok] download fetches only the 3 needed files at a pinned revision")
+    assert (tmp / ONNX_INT8_NAME).exists()
+    print("  [ok] download fetches 3 files at a pinned revision then exports ONNX")
 
 
-def test_model_installed_requires_config_processor_and_weights() -> None:
+def test_model_installed_accepts_onnx_or_legacy_weights() -> None:
     tmp = Path(tempfile.mkdtemp(prefix="brake-anime-installed-"))
     orig = anime_nsfw.model_dir
     anime_nsfw.model_dir = lambda: tmp  # type: ignore[assignment]
@@ -77,160 +84,171 @@ def test_model_installed_requires_config_processor_and_weights() -> None:
         assert model_installed() is False
         (tmp / "config.json").write_text("{}", encoding="utf-8")
         (tmp / "preprocessor_config.json").write_text("{}", encoding="utf-8")
-        assert model_installed() is False  # weights still missing
+        assert model_installed() is False  # no runtime weights yet
+        (tmp / ONNX_INT8_NAME).write_bytes(b"\x00")
+        assert model_installed() is True  # onnx is the runtime format
+        (tmp / ONNX_INT8_NAME).unlink()
         (tmp / "model.safetensors").write_bytes(b"\x00")
-        assert model_installed() is True
+        assert model_installed() is True  # legacy torch weights still accepted
     finally:
         anime_nsfw.model_dir = orig  # type: ignore[assignment]
-    print("  [ok] model_installed needs config + processor + weights")
+    print("  [ok] model_installed accepts onnx or legacy torch weights")
 
 
 def test_disabled_config_short_circuits() -> None:
     det = AnimeNSFWDetector(NudityConfig(enabled=False))
     res = det.scan(Image.new("RGB", (800, 600), "black"))
     assert res.triggered is False
-    assert det._model is None  # never attempted to load
+    assert det._session is None  # never attempted to load
     print("  [ok] disabled config returns negative without loading")
 
 
-def _fake_loaded_detector(nsfw_score_by_size):
-    """Detector with a fake torch-free scorer. ``nsfw_score_by_size`` maps a
-    region's (w,h) -> nsfw score, so tests control per-region outputs."""
+def _fake_loaded_detector(score_fn):
+    """Detector with loading bypassed and a fake region scorer. ``score_fn``
+    maps a region image's (w,h) -> nsfw score."""
     det = AnimeNSFWDetector(NudityConfig(enabled=True))
     det._disabled = False
-    det._model = object()  # non-None so _ensure_loaded short-circuits
+    det._session = object()  # non-None
     det._ensure_loaded = lambda: True  # type: ignore[assignment]
+    det._scored_counts = []
 
     def fake_score(images):
-        # Score by the pre-crop region size recorded on the PIL image.
-        return [nsfw_score_by_size(im.size) for im in images]
+        det._scored_counts.append(len(images))
+        return [score_fn(im.size) for im in images]
 
     det._score_regions = fake_score  # type: ignore[assignment]
     return det
 
 
-def test_scan_triggers_above_threshold_only() -> None:
-    high = _fake_loaded_detector(lambda size: 0.95)
-    res = high.scan(Image.new("RGB", (300, 300), "white"))
-    assert res.triggered is True
-    assert res.severity == "context"
-    assert res.confidence >= CONTEXT_THRESHOLD
-    assert "POSSIBLE NSFW ART" in res.label
-
-    low = _fake_loaded_detector(lambda size: CONTEXT_THRESHOLD - 0.01)
-    res = low.scan(Image.new("RGB", (300, 300), "white"))
+def test_clean_settle_scan_is_one_pass() -> None:
+    # A settle scan (changed box present) probes only the changed crop.
+    det = _fake_loaded_detector(lambda size: 0.02)
+    res = det.scan(Image.new("RGB", (1200, 800), "white"), profile="full", changed_box=(100, 100, 600, 600))
     assert res.triggered is False
-    print("  [ok] scan triggers only at/above the context threshold")
+    assert res.severity == "none"
+    assert sum(det._scored_counts) == 1
+    print("  [ok] a clean settle scan costs a single pass (changed crop only)")
 
 
-def test_targeted_profile_scans_one_region_full_scans_two() -> None:
-    seen = {"full": 0, "targeted": 0}
-
-    def make(mode):
-        det = _fake_loaded_detector(lambda size: 0.0)
-
-        def counting(images):
-            seen[mode] = len(images)
-            return [0.0 for _ in images]
-
-        det._score_regions = counting  # type: ignore[assignment]
-        return det
-
-    big = Image.new("RGB", (1200, 800), "white")
-    make("full").scan(big, profile="full")
-    make("targeted").scan(big, profile="targeted")
-    assert seen["full"] == 2      # full + center
-    assert seen["targeted"] == 1  # full only
-    print("  [ok] full profile scans full+center, targeted scans full only")
+def test_clean_periodic_scan_probes_full_and_center() -> None:
+    # No changed box (startup / 15s periodic backstop): probe is full + center.
+    det = _fake_loaded_detector(lambda size: 0.02)
+    det.scan(Image.new("RGB", (1200, 800), "white"), profile="full")
+    assert sum(det._scored_counts) == 2
+    print("  [ok] a clean periodic scan probes full + center for coverage")
 
 
-def test_changed_box_adds_region() -> None:
-    counts = {}
-
-    det = _fake_loaded_detector(lambda size: 0.0)
-
-    def counting(images):
-        counts["n"] = len(images)
-        return [0.0 for _ in images]
-
-    det._score_regions = counting  # type: ignore[assignment]
+def test_warm_probe_escalates_to_all_regions() -> None:
+    det = _fake_loaded_detector(lambda size: 0.6)  # above ESCALATE_GATE
     det.scan(Image.new("RGB", (1200, 800), "white"), profile="full", changed_box=(100, 100, 600, 600))
-    assert counts["n"] == 3  # full + center + changed
-    print("  [ok] a changed-area hint adds a classified region")
+    # changed probe is warm -> full + center also scored: 3 regions total.
+    assert sum(det._scored_counts) == 3
+    assert ESCALATE_GATE <= 0.6
+    print("  [ok] a warm probe escalates to score every region")
 
 
-def test_best_region_wins() -> None:
-    # Center crop of a 1200x800 image is 600x400; make that region the hottest.
-    def by_size(size):
-        return 0.97 if size == (600, 400) else 0.10
+def test_single_hot_region_is_suspect_not_trigger() -> None:
+    # Only the center crop (600x400 of a 1200x800 image) is hot.
+    det = _fake_loaded_detector(lambda size: 0.95 if size == (600, 400) else 0.05)
+    res = det.scan(Image.new("RGB", (1200, 800), "white"), profile="full")
+    assert res.triggered is False
+    assert "SUSPECT" in res.label
+    assert res.region == "center"
+    print("  [ok] one hot region is a non-locking suspect, not a trigger")
 
-    det = _fake_loaded_detector(by_size)
+
+def test_two_high_regions_trigger() -> None:
+    det = _fake_loaded_detector(lambda size: 0.95)  # full and center both high
     res = det.scan(Image.new("RGB", (1200, 800), "white"), profile="full")
     assert res.triggered is True
-    assert res.region == "center"
-    print("  [ok] the highest-scoring region is reported")
+    assert res.severity == "context"
+    assert res.confidence >= TRIGGER_THRESHOLD
+    print("  [ok] two corroborating high regions trigger a context hit")
+
+
+def test_targeted_profile_scans_full_only() -> None:
+    det = _fake_loaded_detector(lambda size: 0.02)
+    det.scan(Image.new("RGB", (1200, 800), "white"), profile="targeted")
+    assert sum(det._scored_counts) == 1  # full only, no center on targeted
+    print("  [ok] targeted profile probes the full frame only")
+
+
+def test_changed_crop_alone_cannot_trigger() -> None:
+    # changed crop blazing hot, every stable region cold: must not trigger
+    # (fast game animation produces hot changed crops).
+    def by_name(size):
+        # 1200x800 -> changed box (100,100,1100,700) clamps to >=0.20 frac.
+        return 0.99 if size == (1000, 600) else 0.10
+
+    det = _fake_loaded_detector(by_name)
+    res = det.scan(Image.new("RGB", (1200, 800), "white"), profile="full", changed_box=(100, 100, 1100, 700))
+    assert res.triggered is False
+    print("  [ok] a hot changed crop alone does not trigger")
+
+
+def test_corroboration_rules_directly() -> None:
+    c = AnimeNSFWDetector._corroborated
+    assert c({"full": 0.93, "center": 0.91}) is True              # two high
+    assert c({"full": 0.95, "center": 0.50}) is False             # one high
+    assert c({"full": 0.99, "center": 0.83, "top": 0.84}) is True  # extreme + 2 secondary
+    assert c({"full": 0.20, "changed": 0.99}) is False            # changed alone
+    assert c({"full": 0.91, "changed": 0.99}) is True             # changed + a high stable region
+    assert c({"full": 0.5}) is False
+    print("  [ok] corroboration rules behave as specified")
 
 
 def test_real_preprocessing_shape_and_range() -> None:
-    if not _HAS_TORCH:
-        print("  [skip] torch not installed")
-        return
-    import numpy as np
-    import torch
-
     det = AnimeNSFWDetector(NudityConfig(enabled=True))
-    det._torch = torch
     det._edge = 224
     det._mean = np.array([0.5, 0.5, 0.5], dtype=np.float32)
     det._std = np.array([0.5, 0.5, 0.5], dtype=np.float32)
-    tensor = det._preprocess([Image.new("RGB", (900, 700), "white"), Image.new("RGB", (50, 50), "black")])
-    assert tuple(tensor.shape) == (2, 3, 224, 224)
-    # white -> (1-0.5)/0.5 = 1.0 ; black -> (0-0.5)/0.5 = -1.0
-    assert abs(float(tensor[0].max()) - 1.0) < 1e-5
-    assert abs(float(tensor[1].min()) + 1.0) < 1e-5
-    print("  [ok] preprocessing yields (N,3,224,224) normalized to [-1,1]")
+    arr = det._preprocess([Image.new("RGB", (900, 700), "white"), Image.new("RGB", (50, 50), "black")])
+    assert isinstance(arr, np.ndarray)
+    assert arr.shape == (2, 3, 224, 224)
+    assert arr.dtype == np.float32
+    assert abs(float(arr[0].max()) - 1.0) < 1e-5   # white -> +1
+    assert abs(float(arr[1].min()) + 1.0) < 1e-5   # black -> -1
+    print("  [ok] preprocessing yields float32 (N,3,224,224) normalized to [-1,1]")
 
 
-def test_real_scoring_with_tiny_model() -> None:
-    if not _HAS_TORCH:
-        print("  [skip] torch not installed")
-        return
-    import numpy as np
-    import torch
-
-    class _TinyModel(torch.nn.Module):
-        def __init__(self):
-            super().__init__()
-            self.head = torch.nn.Linear(3 * 224 * 224, 2)
-
-        def forward(self, pixel_values=None):
-            flat = pixel_values.reshape(pixel_values.shape[0], -1)
-            return types.SimpleNamespace(logits=self.head(flat))
-
+def test_real_scoring_with_fake_onnx_session() -> None:
     det = AnimeNSFWDetector(NudityConfig(enabled=True))
-    det._torch = torch
-    det._model = _TinyModel().eval()
+    det._edge = 224
+    det._mean = np.array([0.5, 0.5, 0.5], dtype=np.float32)
+    det._std = np.array([0.5, 0.5, 0.5], dtype=np.float32)
     det._nsfw_index = 1
-    det._edge = 224
-    det._mean = np.array([0.5, 0.5, 0.5], dtype=np.float32)
-    det._std = np.array([0.5, 0.5, 0.5], dtype=np.float32)
-    scores = det._score_regions([Image.new("RGB", (300, 300), "white")])
-    assert len(scores) == 1
-    assert 0.0 <= scores[0] <= 1.0
-    print("  [ok] real preprocess+softmax scoring path runs end-to-end")
+    det._input_name = "pixel_values"
+
+    class _FakeSession:
+        def run(self, _outputs, feed):
+            x = feed["pixel_values"]
+            n = x.shape[0]
+            # logits where nsfw (index 1) wins -> softmax near 1.0
+            return [np.tile(np.array([0.0, 8.0], dtype=np.float32), (n, 1))]
+
+    det._session = _FakeSession()
+    scores = det._score_regions([Image.new("RGB", (300, 300), "white"), Image.new("RGB", (40, 40), "black")])
+    assert len(scores) == 2
+    assert all(0.0 <= s <= 1.0 for s in scores)
+    assert scores[0] > 0.99  # softmax of [0,8] at index 1
+    print("  [ok] real preprocess + onnxruntime softmax path runs end-to-end")
 
 
 def main() -> int:
     tests = [
-        test_download_uses_lean_allowlist_and_pinned_revision,
-        test_model_installed_requires_config_processor_and_weights,
+        test_download_lean_allowlist_pinned_revision_and_onnx_export,
+        test_model_installed_accepts_onnx_or_legacy_weights,
         test_disabled_config_short_circuits,
-        test_scan_triggers_above_threshold_only,
-        test_targeted_profile_scans_one_region_full_scans_two,
-        test_changed_box_adds_region,
-        test_best_region_wins,
+        test_clean_settle_scan_is_one_pass,
+        test_clean_periodic_scan_probes_full_and_center,
+        test_warm_probe_escalates_to_all_regions,
+        test_single_hot_region_is_suspect_not_trigger,
+        test_two_high_regions_trigger,
+        test_targeted_profile_scans_full_only,
+        test_changed_crop_alone_cannot_trigger,
+        test_corroboration_rules_directly,
         test_real_preprocessing_shape_and_range,
-        test_real_scoring_with_tiny_model,
+        test_real_scoring_with_fake_onnx_session,
     ]
     for fn in tests:
         print(f"\n{fn.__name__}")

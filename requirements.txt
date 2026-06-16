@@ -6,12 +6,16 @@ Pillow>=10.0
 
 # Illustrated/anime NSFW (Falconsai/nsfw_image_detection on HuggingFace).
 # Optional but recommended — without these the anime_nsfw detector silently
-# skips and only photographic NudeNet runs. The detector loads the model
-# directly and preprocesses with PIL + NumPy, so torchvision is NOT required
-# (the CPU-only torch wheel is enough). huggingface_hub ships with
-# transformers and is used only for the one-time model download.
+# skips and only photographic NudeNet runs.
+#
+# These three are INSTALL-TIME ONLY: the "install anime detector" step uses
+# them to download the model and export it to an INT8 ONNX file, then they are
+# never imported again. The long-lived agent runs the classifier on
+# onnxruntime alone (listed above, shared with NudeNet), keeping its resident
+# memory low. torchvision is NOT required.
 transformers>=4.30
 torch>=2.0
+onnx>=1.15
 
 # Capture
 mss>=9.0

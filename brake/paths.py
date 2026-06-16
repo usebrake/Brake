@@ -52,6 +52,10 @@ def incident_file() -> Path:
     return data_dir() / "incidents.json"
 
 
+def detection_events_file() -> Path:
+    return data_dir() / "detection_events.jsonl"
+
+
 def recovery_file() -> Path:
     return data_dir() / "recovery.json"
 
