@@ -8,11 +8,16 @@ const repoRoot = path.resolve(__dirname, "../..");
 const installRoot = app.isPackaged ? path.dirname(process.execPath) : repoRoot;
 const pythonExe = process.env.BRAKE_PYTHON || process.env.PYTHON || "python";
 const bridgeExe = app.isPackaged ? path.join(installRoot, "BrakeBridge.exe") : "";
+const appUserModelId = "com.usebrake.Brake";
 let backendQueue = Promise.resolve();
 let mainWindow = null;
 let tray = null;
 let devAgent = null;
 let isQuitting = false;
+
+if (process.platform === "win32") {
+  app.setAppUserModelId(appUserModelId);
+}
 
 if (!app.requestSingleInstanceLock()) {
   app.exit(0);

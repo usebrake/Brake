@@ -160,7 +160,12 @@ foreach ($name in @("BrakeAgent", "BrakeBoot", "BrakeBridge", "BrakeLockout", "B
     Remove-Item -LiteralPath $src -Recurse -Force
 }
 
-Copy-Item -Path (Join-Path $repoRoot "installer") -Destination (Join-Path $bundle "installer") -Recurse -Force
+$installerBundle = Join-Path $bundle "installer"
+if (Test-Path $installerBundle) {
+    Remove-Item -LiteralPath $installerBundle -Recurse -Force
+}
+New-Item -ItemType Directory -Force -Path $installerBundle | Out-Null
+Copy-Item -Path (Join-Path $repoRoot "installer\*") -Destination $installerBundle -Recurse -Force
 Copy-Item -Path (Join-Path $repoRoot "README.md") -Destination $bundle -Force
 Copy-Item -Path (Join-Path $repoRoot "LICENSE") -Destination $bundle -Force
 Copy-Item -Path (Join-Path $repoRoot "PRIVACY.md") -Destination $bundle -Force

@@ -23,10 +23,15 @@ Copy-Item -Path (Join-Path $electronDist "*") -Destination $bundle -Recurse -For
 
 $targetElectronExe = Join-Path $bundle "electron.exe"
 $targetBrakeExe = Join-Path $bundle "Brake.exe"
+$iconPath = Join-Path $desktopRoot "src\assets\brake-ring.ico"
 if (Test-Path $targetBrakeExe) {
     Remove-Item -LiteralPath $targetBrakeExe -Force
 }
 Move-Item -LiteralPath $targetElectronExe -Destination $targetBrakeExe -Force
+
+Write-Host "Stamping Brake icon into Electron shell..."
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repoRoot "packaging\set_exe_icon.ps1") -ExePath $targetBrakeExe -IconPath $iconPath
+if ($LASTEXITCODE -ne 0) { throw "set_exe_icon.ps1 returned $LASTEXITCODE" }
 
 $appRoot = Join-Path $bundle "resources\app"
 if (Test-Path $appRoot) {

@@ -105,7 +105,7 @@ function animeStatusCopy(status) {
   const labels = {
     ready: "Ready",
     not_installed: "Not installed",
-    missing_dependencies: "Missing Python packages",
+    missing_dependencies: "Not installed",
     installing: "Installing"
   };
   return labels[status] || "Not installed";
@@ -119,7 +119,7 @@ function detectorCopy(detector) {
 
 function eventSeverityCopy(event) {
   if (event.severity === "hard") return "Hard";
-  if (event.triggered) return "Light";
+  if (event.triggered) return "Context";
   return "Suspicion";
 }
 
@@ -949,8 +949,7 @@ export default function App() {
     window.brake?.downloadAnime?.().then((response) => {
       setAnimeInstalling(false);
       if (!response?.ok) {
-        const nextModelStatus = response?.error === "missing_dependencies" ? "missing_dependencies" : "not_installed";
-        setStatus((current) => ({ ...current, animeModelStatus: nextModelStatus }));
+        setStatus((current) => ({ ...current, animeModelStatus: "not_installed" }));
         setNotice(humanError(response?.error || "Illustrated detector download failed."));
         return;
       }
@@ -1459,7 +1458,11 @@ function humanError(error) {
     service_unavailable: "Brake could not reach the background service. Restart Brake or run installer\\install.bat again.",
     state_untrusted: "Brake could not verify its settings. Use your recovery code to repair protection.",
     anime_model_not_ready: "Download the illustrated detector before turning it on.",
-    missing_dependencies: "Python is missing transformers or torch. Install requirements, then try again.",
+    missing_dependencies: "The illustrated detector package is not available yet. Try again after updating Brake.",
+    model_package_unavailable: "The illustrated detector package could not be downloaded. Check your connection or try again later.",
+    model_package_invalid: "The illustrated detector package was not valid. Try again later.",
+    model_package_incomplete: "The illustrated detector package was incomplete. Try again later.",
+    model_package_untrusted: "The illustrated detector package had unexpected files. Try again later.",
     model_download_incomplete: "The detector download did not finish cleanly. Try again.",
   };
   return messages[error] || error;

@@ -4,15 +4,12 @@ onnxruntime>=1.17
 opencv-python-headless>=4.9
 Pillow>=10.0
 
-# Illustrated/anime NSFW (Falconsai/nsfw_image_detection on HuggingFace).
-# Optional but recommended — without these the anime_nsfw detector silently
-# skips and only photographic NudeNet runs.
+# Illustrated/anime NSFW export tooling for source builds.
 #
-# These three are INSTALL-TIME ONLY: the "install anime detector" step uses
-# them to download the model and export it to an INT8 ONNX file, then they are
-# never imported again. The long-lived agent runs the classifier on
-# onnxruntime alone (listed above, shared with NudeNet), keeping its resident
-# memory low. torchvision is NOT required.
+# Normal installer users download a prebuilt ONNX detector package from GitHub
+# Releases. Source/dev builds keep these so maintainers can regenerate that
+# package from Falconsai/nsfw_image_detection when needed. The long-lived agent
+# still runs the classifier on onnxruntime only. torchvision is NOT required.
 transformers>=4.30
 torch>=2.0
 onnx>=1.15

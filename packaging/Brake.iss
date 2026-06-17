@@ -20,6 +20,7 @@ OutputBaseFilename=BrakeSetup-{#MyAppVersion}
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=..\desktop\src\assets\brake-ring.ico
 PrivilegesRequired=admin
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
@@ -31,8 +32,8 @@ CloseApplications=no
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\\Brake"; Filename: "{app}\{#MyAppExeName}"
-Name: "{commondesktop}\\Brake"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{group}\\Brake"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\resources\app\src\assets\brake-ring.ico"; AppUserModelID: "com.usebrake.Brake"
+Name: "{commondesktop}\\Brake"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\resources\app\src\assets\brake-ring.ico"; AppUserModelID: "com.usebrake.Brake"; Tasks: desktopicon
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional shortcuts:"
@@ -42,7 +43,7 @@ Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Fil
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch Brake"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
-Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\installer\unregister_service.ps1"""; Flags: runhidden waituntilterminated
+Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\installer\unregister_service.ps1"""; Flags: runhidden waituntilterminated; RunOnceId: "RemoveBrakeServices"
 
 [Code]
 function PrepareToInstall(var NeedsRestart: Boolean): String;

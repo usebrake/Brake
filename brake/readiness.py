@@ -69,29 +69,6 @@ def check_all() -> List[ReadinessIssue]:
             "pip install pywin32",
         ))
 
-    # --- WARNINGS (optional features) ---
-    if not _check_import("transformers"):
-        issues.append(ReadinessIssue(
-            "transformers", "warning",
-            "transformers is missing. The illustrated detector cannot be downloaded/exported yet. "
-            "Already-exported illustrated models still run on ONNX Runtime.",
-            "pip install transformers torch onnx",
-        ))
-    elif not _check_import("torch"):
-        issues.append(ReadinessIssue(
-            "torch", "warning",
-            "torch is missing. The illustrated detector cannot be exported to ONNX yet. "
-            "Already-exported illustrated models still run on ONNX Runtime.",
-            "pip install torch onnx",
-        ))
-    elif not _check_import("onnx"):
-        issues.append(ReadinessIssue(
-            "onnx", "warning",
-            "onnx is missing. The illustrated detector cannot be exported yet. "
-            "Already-exported illustrated models still run on ONNX Runtime.",
-            "pip install onnx",
-        ))
-
     if not _check_import("argon2"):
         issues.append(ReadinessIssue(
             "argon2-cffi", "blocker",

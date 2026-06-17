@@ -10,6 +10,7 @@ from __future__ import annotations
 import sys
 import tempfile
 import types
+import zipfile
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -29,8 +30,55 @@ from brake.detectors.anime_nsfw import (
     TRIGGER_THRESHOLD,
     _ALLOW_PATTERNS,
     AnimeNSFWDetector,
+    anime_model_status,
     model_installed,
 )
+
+
+def test_status_is_not_installed_without_python_export_dependencies() -> None:
+    tmp = Path(tempfile.mkdtemp(prefix="brake-anime-status-"))
+    orig_model_dir = anime_nsfw.model_dir
+    orig_deps = anime_nsfw.dependencies_available
+    anime_nsfw.model_dir = lambda: tmp  # type: ignore[assignment]
+    anime_nsfw.dependencies_available = lambda: False  # type: ignore[assignment]
+    try:
+        assert anime_model_status() == "not_installed"
+    finally:
+        anime_nsfw.model_dir = orig_model_dir  # type: ignore[assignment]
+        anime_nsfw.dependencies_available = orig_deps  # type: ignore[assignment]
+    print("  [ok] missing export packages do not show as a user-facing model state")
+
+
+def test_download_prebuilt_package_without_python_export_dependencies() -> None:
+    tmp = Path(tempfile.mkdtemp(prefix="brake-anime-prebuilt-"))
+    package = tmp / "BrakeIllustratedDetector.zip"
+    with zipfile.ZipFile(package, "w") as zf:
+        zf.writestr("config.json", "{}")
+        zf.writestr("preprocessor_config.json", "{}")
+        zf.writestr(ONNX_INT8_NAME, b"onnx")
+        zf.writestr("manifest.json", "{}")
+
+    target = tmp / "installed"
+    orig_model_dir = anime_nsfw.model_dir
+    orig_deps = anime_nsfw.dependencies_available
+    orig_env = anime_nsfw.os.environ.get(anime_nsfw.PREBUILT_PACKAGE_ENV)
+    anime_nsfw.model_dir = lambda: target  # type: ignore[assignment]
+    anime_nsfw.dependencies_available = lambda: False  # type: ignore[assignment]
+    anime_nsfw.os.environ[anime_nsfw.PREBUILT_PACKAGE_ENV] = str(package)
+    try:
+        anime_nsfw.download_model()
+        assert (target / "config.json").exists()
+        assert (target / "preprocessor_config.json").exists()
+        assert (target / ONNX_INT8_NAME).exists()
+        assert model_installed() is True
+    finally:
+        anime_nsfw.model_dir = orig_model_dir  # type: ignore[assignment]
+        anime_nsfw.dependencies_available = orig_deps  # type: ignore[assignment]
+        if orig_env is None:
+            anime_nsfw.os.environ.pop(anime_nsfw.PREBUILT_PACKAGE_ENV, None)
+        else:
+            anime_nsfw.os.environ[anime_nsfw.PREBUILT_PACKAGE_ENV] = orig_env
+    print("  [ok] prebuilt ONNX package installs without torch/transformers/onnx")
 
 
 def test_download_lean_allowlist_pinned_revision_and_onnx_export() -> None:
@@ -55,14 +103,20 @@ def test_download_lean_allowlist_pinned_revision_and_onnx_export() -> None:
     orig_hub = sys.modules.get("huggingface_hub")
     orig_model_dir = anime_nsfw.model_dir
     orig_export = anime_nsfw._export_to_onnx
+    orig_env = anime_nsfw.os.environ.get(anime_nsfw.PREBUILT_PACKAGE_ENV)
     sys.modules["huggingface_hub"] = fake_hub
     anime_nsfw.model_dir = lambda: tmp  # type: ignore[assignment]
     anime_nsfw._export_to_onnx = fake_export  # type: ignore[assignment]
+    anime_nsfw.os.environ[anime_nsfw.PREBUILT_PACKAGE_ENV] = "off"
     try:
         anime_nsfw.download_model()
     finally:
         anime_nsfw.model_dir = orig_model_dir  # type: ignore[assignment]
         anime_nsfw._export_to_onnx = orig_export  # type: ignore[assignment]
+        if orig_env is None:
+            anime_nsfw.os.environ.pop(anime_nsfw.PREBUILT_PACKAGE_ENV, None)
+        else:
+            anime_nsfw.os.environ[anime_nsfw.PREBUILT_PACKAGE_ENV] = orig_env
         if orig_hub is not None:
             sys.modules["huggingface_hub"] = orig_hub
         else:
@@ -236,6 +290,8 @@ def test_real_scoring_with_fake_onnx_session() -> None:
 
 def main() -> int:
     tests = [
+        test_status_is_not_installed_without_python_export_dependencies,
+        test_download_prebuilt_package_without_python_export_dependencies,
         test_download_lean_allowlist_pinned_revision_and_onnx_export,
         test_model_installed_accepts_onnx_or_legacy_weights,
         test_disabled_config_short_circuits,

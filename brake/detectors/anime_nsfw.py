@@ -36,6 +36,12 @@ from __future__ import annotations
 import importlib.util
 import json
 import logging
+import os
+import shutil
+import tempfile
+import urllib.error
+import urllib.request
+import zipfile
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -64,6 +70,10 @@ ONNX_FP32_NAME = "model.onnx"
 # Torch weights are removed after the one-time ONNX export to save disk and to
 # make clear they are not used at runtime.
 _TORCH_WEIGHT_NAMES = ["model.safetensors", "pytorch_model.bin"]
+PREBUILT_PACKAGE_URL = "https://github.com/usebrake/Brake/releases/latest/download/BrakeIllustratedDetector.zip"
+PREBUILT_PACKAGE_ENV = "BRAKE_ILLUSTRATED_DETECTOR_URL"
+_PREBUILT_REQUIRED_FILES = {"config.json", "preprocessor_config.json", ONNX_INT8_NAME}
+_PREBUILT_OPTIONAL_FILES = {"image_processor_config.json", "manifest.json"}
 
 # Suspicion floor. Scores here ask for another look; they do not lock.
 CONTEXT_THRESHOLD = 0.86
@@ -106,6 +116,14 @@ def dependencies_available() -> bool:
         return False
 
 
+def prebuilt_package_url() -> str:
+    raw = os.environ.get(PREBUILT_PACKAGE_ENV, PREBUILT_PACKAGE_URL)
+    value = str(raw or "").strip()
+    if value.lower() in {"", "0", "false", "off", "none"}:
+        return ""
+    return value
+
+
 def model_installed() -> bool:
     root = model_dir()
     if not root.exists():
@@ -128,9 +146,7 @@ def model_installed() -> bool:
 def anime_model_status() -> str:
     if model_installed():
         return "ready"
-    if dependencies_available():
-        return "not_installed"
-    return "missing_dependencies"
+    return "not_installed"
 
 
 def _export_to_onnx(root: Path) -> Path:
@@ -149,13 +165,94 @@ def _export_to_onnx(root: Path) -> Path:
     )
 
 
+def _safe_extract_prebuilt_package(zip_path: Path, target: Path) -> None:
+    with zipfile.ZipFile(zip_path) as zf:
+        names = {
+            info.filename.replace("\\", "/")
+            for info in zf.infolist()
+            if not info.is_dir()
+        }
+        root_files = {Path(name).name for name in names if "/" not in name.strip("/")}
+        missing = _PREBUILT_REQUIRED_FILES - root_files
+        if missing:
+            raise RuntimeError("model_package_incomplete")
+
+        allowed = _PREBUILT_REQUIRED_FILES | _PREBUILT_OPTIONAL_FILES
+        for info in zf.infolist():
+            if info.is_dir():
+                continue
+            name = info.filename.replace("\\", "/").strip("/")
+            if "/" in name or Path(name).name not in allowed:
+                raise RuntimeError("model_package_untrusted")
+
+        temp_target = Path(tempfile.mkdtemp(prefix="brake-illustrated-model-"))
+        try:
+            for info in zf.infolist():
+                if info.is_dir():
+                    continue
+                name = Path(info.filename.replace("\\", "/").strip("/")).name
+                with zf.open(info) as src, (temp_target / name).open("wb") as dst:
+                    shutil.copyfileobj(src, dst)
+
+            if target.exists():
+                shutil.rmtree(target)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(temp_target), str(target))
+            temp_target = None  # type: ignore[assignment]
+        finally:
+            if temp_target is not None:
+                shutil.rmtree(temp_target, ignore_errors=True)
+
+
+def _download_prebuilt_package() -> bool:
+    url = prebuilt_package_url()
+    if not url:
+        return False
+
+    target = model_dir()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_zip_raw = tempfile.mkstemp(prefix="brake-illustrated-", suffix=".zip")
+    os.close(fd)
+    temp_zip = Path(temp_zip_raw)
+    try:
+        _log.info("anime_nsfw: downloading prebuilt ONNX package from %s", url)
+        local_package = Path(url).expanduser()
+        if local_package.exists():
+            shutil.copyfile(local_package, temp_zip)
+        else:
+            with urllib.request.urlopen(url, timeout=60) as response, temp_zip.open("wb") as dst:
+                shutil.copyfileobj(response, dst)
+        _safe_extract_prebuilt_package(temp_zip, target)
+        if not model_installed():
+            raise RuntimeError("model_package_incomplete")
+        _log.info("anime_nsfw: prebuilt ONNX package installed.")
+        return True
+    except urllib.error.URLError as exc:
+        raise RuntimeError("model_package_unavailable") from exc
+    except zipfile.BadZipFile as exc:
+        raise RuntimeError("model_package_invalid") from exc
+    finally:
+        try:
+            temp_zip.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
 def download_model() -> None:
+    try:
+        if _download_prebuilt_package():
+            return
+    except RuntimeError:
+        if not dependencies_available():
+            raise
+        _log.warning("anime_nsfw: prebuilt package failed; falling back to source export.", exc_info=True)
+
     if not dependencies_available():
-        raise RuntimeError("missing_dependencies")
+        raise RuntimeError("model_package_unavailable")
     try:
         from huggingface_hub import snapshot_download  # type: ignore[import-not-found]
     except ImportError as exc:
-        raise RuntimeError("missing_dependencies") from exc
+        raise RuntimeError("model_package_unavailable") from exc
 
     target = model_dir()
     target.mkdir(parents=True, exist_ok=True)
