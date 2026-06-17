@@ -67,12 +67,12 @@ class SetupDialog(QDialog):
 
         layout.addWidget(QLabel("Password"))
         self.pw = QLineEdit()
-        self.pw.setEchoMode(QLineEdit.EchoMode.Password)
+        self.pw.setEchoMode(QLineEdit.EchoMode.Normal)
         layout.addWidget(self.pw)
 
         layout.addWidget(QLabel("Confirm password"))
         self.pw2 = QLineEdit()
-        self.pw2.setEchoMode(QLineEdit.EchoMode.Password)
+        self.pw2.setEchoMode(QLineEdit.EchoMode.Normal)
         layout.addWidget(self.pw2)
 
         self.error = QLabel("")

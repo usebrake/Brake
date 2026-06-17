@@ -73,7 +73,7 @@ class CommitmentDialog(QDialog):
 
         layout.addWidget(QLabel("Password"))
         self.password = QLineEdit()
-        self.password.setEchoMode(QLineEdit.EchoMode.Password)
+        self.password.setEchoMode(QLineEdit.EchoMode.Normal)
         layout.addWidget(self.password)
 
         self.error = QLabel("")

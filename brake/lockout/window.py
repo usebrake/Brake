@@ -126,7 +126,7 @@ class _LockoutWindow(QWidget):
                 panel_layout.addWidget(self.recovery_status)
 
                 self.recovery_code = QLineEdit()
-                self.recovery_code.setEchoMode(QLineEdit.EchoMode.Password)
+                self.recovery_code.setEchoMode(QLineEdit.EchoMode.Normal)
                 self.recovery_code.setPlaceholderText("Recovery code")
                 self.recovery_code.setFixedWidth(320)
                 self.recovery_code.setStyleSheet(

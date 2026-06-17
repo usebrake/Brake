@@ -63,12 +63,12 @@ class SetPasswordDialog(QDialog):
 
         layout.addWidget(QLabel("New password"))
         self.pw = QLineEdit()
-        self.pw.setEchoMode(QLineEdit.EchoMode.Password)
+        self.pw.setEchoMode(QLineEdit.EchoMode.Normal)
         layout.addWidget(self.pw)
 
         layout.addWidget(QLabel("Confirm password"))
         self.pw_confirm = QLineEdit()
-        self.pw_confirm.setEchoMode(QLineEdit.EchoMode.Password)
+        self.pw_confirm.setEchoMode(QLineEdit.EchoMode.Normal)
         layout.addWidget(self.pw_confirm)
 
         buttons = QDialogButtonBox(

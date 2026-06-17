@@ -33,6 +33,7 @@ WM_SYSKEYDOWN = 0x0104
 LLKHF_ALTDOWN = 0x20
 
 VK_TAB = 0x09
+VK_CAPITAL = 0x14
 VK_ESCAPE = 0x1B
 VK_SHIFT = 0x10
 VK_CONTROL = 0x11
@@ -122,14 +123,26 @@ class KeyboardBlocker:
         ctrl = self._is_down(VK_CONTROL)
         shift = self._is_down(VK_SHIFT)
 
-        # Windows keys: always swallow
-        if vk in (VK_LWIN, VK_RWIN):
-            return 1
-        # Alt+anything escapy
-        if alt and vk in (VK_TAB, VK_F4, VK_ESCAPE, VK_SPACE):
-            return 1
-        # Ctrl+Esc (Start) and Ctrl+Shift+Esc (Task Manager)
-        if vk == VK_ESCAPE and (ctrl or shift):
+        if self._should_block(vk, alt=alt, ctrl=ctrl, shift=shift):
             return 1
 
         return self._user32.CallNextHookEx(self._hook_id, n_code, w_param, l_param)
+
+    @staticmethod
+    def _should_block(vk: int, *, alt: bool, ctrl: bool, shift: bool) -> bool:
+        # Recovery entry must remain usable during lockout. Let regular text
+        # input through, including Caps Lock and Shift-modified characters.
+        if vk in (VK_CAPITAL, VK_SHIFT):
+            return False
+
+        # Windows keys: always swallow
+        if vk in (VK_LWIN, VK_RWIN):
+            return True
+        # Alt+anything escapy
+        if alt and vk in (VK_TAB, VK_F4, VK_ESCAPE, VK_SPACE):
+            return True
+        # Ctrl+Esc (Start) and Ctrl+Shift+Esc (Task Manager)
+        if vk == VK_ESCAPE and (ctrl or shift):
+            return True
+
+        return False

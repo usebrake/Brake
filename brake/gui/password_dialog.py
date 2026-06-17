@@ -31,7 +31,7 @@ class PasswordDialog(QDialog):
         layout.addWidget(prompt_lbl)
 
         self.pw = QLineEdit()
-        self.pw.setEchoMode(QLineEdit.EchoMode.Password)
+        self.pw.setEchoMode(QLineEdit.EchoMode.Normal)
         layout.addWidget(self.pw)
 
         buttons = QDialogButtonBox(

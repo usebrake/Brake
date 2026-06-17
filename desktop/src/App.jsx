@@ -344,7 +344,7 @@ function PasswordModal({ mode, durationMinutes, commitmentActive, error, onCance
           <span>{enabling ? "New password" : "Password"}</span>
           <input
             autoFocus
-            type="password"
+            type="text"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
           />
@@ -353,7 +353,7 @@ function PasswordModal({ mode, durationMinutes, commitmentActive, error, onCance
           <label className="field">
             <span>Confirm password</span>
             <input
-              type="password"
+              type="text"
               value={confirmPassword}
               onChange={(event) => setConfirmPassword(event.target.value)}
             />
@@ -408,7 +408,7 @@ function ResetPasswordModal({ error, onCancel, onSubmit }) {
           <span>Recovery code</span>
           <input
             autoFocus
-            type="password"
+            type="text"
             value={recoveryCode}
             onChange={(event) => setRecoveryCode(event.target.value)}
           />
@@ -416,7 +416,7 @@ function ResetPasswordModal({ error, onCancel, onSubmit }) {
         <label className="field">
           <span>New password</span>
           <input
-            type="password"
+            type="text"
             value={newPassword}
             onChange={(event) => setNewPassword(event.target.value)}
           />
@@ -424,7 +424,7 @@ function ResetPasswordModal({ error, onCancel, onSubmit }) {
         <label className="field">
           <span>Confirm password</span>
           <input
-            type="password"
+            type="text"
             value={confirmPassword}
             onChange={(event) => setConfirmPassword(event.target.value)}
           />
@@ -474,7 +474,7 @@ function SettingsPasswordModal({ title, body, error, onCancel, onSubmit }) {
           <span>Password</span>
           <input
             autoFocus
-            type="password"
+            type="text"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
           />
@@ -540,7 +540,7 @@ function CommitmentModal({ mode = "create", committedUntil = null, error, onCanc
           <span>Password</span>
           <input
             autoFocus
-            type="password"
+            type="text"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
           />
