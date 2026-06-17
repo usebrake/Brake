@@ -8,7 +8,8 @@
 - Run npm run build in desktop.
 - Build the Windows installer.
 - Confirm README install steps work from `BrakeSetup.exe`.
-- Upload `BrakeSetup.exe`, the versioned installer, and `SHA256SUMS.txt` to the GitHub release.
+- Upload `BrakeSetup.exe`, `BrakeIllustratedDetector.zip`, and `SHA256SUMS.txt` to the GitHub release.
+- Confirm the release has only one installer asset.
 - Confirm uninstall works when protection is off.
 - Confirm uninstall is blocked or delayed when protection or commitment is active.
 - Confirm recovery code reset and emergency cooldown work.

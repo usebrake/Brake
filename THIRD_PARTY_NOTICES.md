@@ -16,8 +16,8 @@ Based on local package metadata in the current development environment:
 
 - NudeNet: MIT
 - ONNX Runtime: MIT
-- Transformers: Apache-2.0
-- Torch: BSD-3-Clause
+- Transformers: Apache-2.0; source/export tooling for building the optional illustrated detector package
+- Torch: BSD-3-Clause; source/export tooling for building the optional illustrated detector package
 - Electron: MIT
 - React: MIT
 - Vite: MIT
@@ -38,4 +38,4 @@ Before a serious commercial release, review every dependency license and include
 - `Falconsai/nsfw_image_detection` is listed on HuggingFace as Apache-2.0.
 - NudeNet package metadata reports MIT.
 
-The beta install path does not intentionally vendor the HuggingFace model cache. The model may download on first use through Transformers/HuggingFace.
+The normal beta install path does not require users to install Transformers or Torch. Brake downloads a prebuilt `BrakeIllustratedDetector.zip` release asset when the optional Illustrated detector is installed. The package is generated from `Falconsai/nsfw_image_detection` during the release build process.

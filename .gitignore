@@ -38,6 +38,15 @@ C:/ProgramData/Brake/
 # Raw design/reference exports (large; production assets live in brake/gui/assets)
 Design Elements/
 
+# Local website/reference/marketing scratch files
+Brake Website Folder/
+ColdTurkeyLandingPage.html
+ColdTurkeyLandingPage_files/
+InstallationGuideMedia/
+RedditCommenter/
+Reddit Block exceptions.txt
+reddit_focused_list.txt
+
 # IDE
 .vscode/
 .idea/

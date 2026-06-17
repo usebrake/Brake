@@ -11,7 +11,7 @@ labels: missed-detection
 
 - [ ] Real photo/video
 - [ ] Stream/browser video
-- [ ] Anime/illustrated
+- [ ] Illustrated/drawn/rendered
 - [ ] Other
 
 ## What happened?

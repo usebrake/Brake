@@ -6,6 +6,8 @@ Free source-available Windows technical beta.
 
 Download `BrakeSetup.exe` from this release. The setup file includes everything normal users need.
 
+The optional Illustrated detector downloads `BrakeIllustratedDetector.zip` from this release when enabled inside the app. You do not need to download it manually.
+
 ## Install
 
 1. Download `BrakeSetup.exe`.
@@ -19,7 +21,7 @@ The installer sets up the background services and creates shortcuts.
 ## Known Beta Warnings
 
 - Windows may show a SmartScreen warning because the beta installer is not code-signed yet.
-- First detection model setup may take time or download model assets.
+- Optional Illustrated detector setup may take time while the app downloads the local model package.
 - False positives and missed detections are possible.
 - This is a friction tool, not an impossible-to-bypass security product.
 
