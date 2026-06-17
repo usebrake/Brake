@@ -19,6 +19,7 @@ from brake.detectors.anime_nsfw import AnimeNSFWDetector
 from brake.detectors.base import DetectionResult, Detector
 from brake.detectors.nudity import NudityDetector
 from brake.incident_memory import IncidentLedger
+from brake.lockout.emergency import LOCKOUT_RECOVERY_MESSAGE
 from brake.lockout.persistence import LockoutPersistence, _TamperedLockoutError
 from brake.lockout.recovery import spawn_resume_lockout_if_needed
 from brake.runtime import lockout_command
@@ -51,6 +52,7 @@ HARD_CONFIRM_WINDOW = t(18, 6)
 # strike + zoom confirmation path.
 HARD_IMMEDIATE_CONFIDENCE = 0.90
 ANIME_EXPLICIT_CONFIDENCE = 0.90
+POST_LOCKOUT_RECOVERY_GRACE_SECONDS = 10.0
 
 
 def _ordinal(n: int) -> str:
@@ -138,6 +140,8 @@ class Watcher:
         self._last_hard_pending_label = ""
         self._last_hard_pending_at = 0.0
         self._hard_strike_count = 0
+        self._lockout_was_recovered = False
+        self._post_lockout_recovery_grace_until = 0.0
         self.scan_environment = ScanEnvironmentMonitor()
         self._state_cached_at = 0.0
         self._state_cache: Optional[tuple] = None  # (state, fail_secure)
@@ -227,12 +231,25 @@ class Watcher:
             _log.warning("Could not read active lockout record while paused: %s", e)
             return max(0.5, self._lockout_until - now)
 
+        if record is not None and record.message == LOCKOUT_RECOVERY_MESSAGE:
+            self._lockout_was_recovered = True
+
         if record is None or record.is_expired():
             try:
                 self.lockouts.clear()
             except Exception:
                 pass
             self._lockout_until = 0.0
+            if self._lockout_was_recovered:
+                self._lockout_was_recovered = False
+                self._post_lockout_recovery_grace_until = now + POST_LOCKOUT_RECOVERY_GRACE_SECONDS
+                self._last_hard_pending_label = ""
+                self._last_hard_pending_at = 0.0
+                self._hard_strike_count = 0
+                _log.info(
+                    "Post-recovery grace armed for %.0fs.",
+                    POST_LOCKOUT_RECOVERY_GRACE_SECONDS,
+                )
             return 0.0
 
         remaining = record.remaining_seconds()
@@ -364,6 +381,8 @@ class Watcher:
             message=message,
             shutdown_on_done=shutdown_on_done,
         )
+        self._lockout_was_recovered = False
+        self._post_lockout_recovery_grace_until = 0.0
         self._lockout_until = time.monotonic() + duration
 
     def _scan_once(
@@ -496,6 +515,13 @@ class Watcher:
                 pending_zoom = None
                 confirm_streak = 0
                 time.sleep(min(5.0, max(0.5, lockout_remaining)))
+                continue
+
+            grace_remaining = self._post_lockout_recovery_grace_until - now
+            if grace_remaining > 0:
+                pending_zoom = None
+                confirm_streak = 0
+                time.sleep(min(0.5, grace_remaining))
                 continue
 
             if now - last_power_check_at >= POWER_CHECK_SECONDS:

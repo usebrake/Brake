@@ -333,31 +333,52 @@ def test_periodic_rescan_cannot_confirm_hard_strike() -> None:
 def test_watcher_resumes_after_recovered_lockout_record_expires() -> None:
     import time
 
+    from brake.lockout.emergency import LOCKOUT_RECOVERY_MESSAGE
+
     w = _watcher()
     w._lockout_until = time.monotonic() + (30 * 60)
-    w.lockouts.start(1, "TEST", message="Recovered", shutdown_on_done=False)
+    w.lockouts.start(1, "TEST", message=LOCKOUT_RECOVERY_MESSAGE, shutdown_on_done=False)
     time.sleep(1.2)
+    now = time.monotonic()
 
-    remaining = w._active_lockout_remaining(time.monotonic())
+    remaining = w._active_lockout_remaining(now)
 
     assert remaining == 0
     assert w._lockout_until == 0
-    print("  [ok] watcher resumes when recovered lockout record expires")
+    assert w._post_lockout_recovery_grace_until >= now + 9
+    print("  [ok] watcher arms grace when recovered lockout record expires")
 
 
 def test_watcher_tracks_shortened_recovered_lockout_timer() -> None:
     import time
 
+    from brake.lockout.emergency import LOCKOUT_RECOVERY_MESSAGE
+
     w = _watcher()
     now = time.monotonic()
     w._lockout_until = now + (30 * 60)
-    w.lockouts.start(2, "TEST", message="Recovered", shutdown_on_done=False)
+    w.lockouts.start(2, "TEST", message=LOCKOUT_RECOVERY_MESSAGE, shutdown_on_done=False)
 
     remaining = w._active_lockout_remaining(now)
 
     assert 0 < remaining <= 2
     assert w._lockout_until < now + 5
     print("  [ok] watcher follows shortened recovered lockout timer")
+
+
+def test_normal_lockout_expiry_does_not_arm_recovery_grace() -> None:
+    import time
+
+    w = _watcher()
+    w._lockout_until = time.monotonic() + 2
+    w.lockouts.start(1, "TEST", message="Normal lockout", shutdown_on_done=False)
+    time.sleep(1.2)
+
+    remaining = w._active_lockout_remaining(time.monotonic())
+
+    assert remaining == 0
+    assert w._post_lockout_recovery_grace_until == 0
+    print("  [ok] normal lockout expiry does not arm recovery grace")
 
 
 def main() -> int:
@@ -374,6 +395,7 @@ def main() -> int:
         test_periodic_rescan_cannot_confirm_hard_strike,
         test_watcher_resumes_after_recovered_lockout_record_expires,
         test_watcher_tracks_shortened_recovered_lockout_timer,
+        test_normal_lockout_expiry_does_not_arm_recovery_grace,
     ]
     for fn in tests:
         print(f"\n{fn.__name__}")
