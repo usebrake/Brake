@@ -104,9 +104,11 @@ def _anime_context_hit(label: str = "POSSIBLE NSFW ART (full)"):
 
 def _watcher(*, anime_detection_enabled: bool = False, shutdown_after_lockout: bool = True):
     from brake.incident_memory import IncidentLedger
+    from brake.lockout.persistence import LockoutPersistence
     from brake.service.watcher import Watcher
 
     incident_dir = Path(tempfile.mkdtemp(prefix="brake-incidents-"))
+    lockout_dir = Path(tempfile.mkdtemp(prefix="brake-lockout-sync-"))
     return Watcher(
         store=_Store(
             anime_detection_enabled=anime_detection_enabled,
@@ -116,6 +118,7 @@ def _watcher(*, anime_detection_enabled: bool = False, shutdown_after_lockout: b
             file_path=incident_dir / "incidents.json",
             key_path=incident_dir / "state.key",
         ),
+        lockouts=LockoutPersistence(file_path=lockout_dir / "lockout.json"),
     )
 
 
@@ -327,6 +330,36 @@ def test_periodic_rescan_cannot_confirm_hard_strike() -> None:
     print("  [ok] periodic rescans cannot confirm a pending hard strike")
 
 
+def test_watcher_resumes_after_recovered_lockout_record_expires() -> None:
+    import time
+
+    w = _watcher()
+    w._lockout_until = time.monotonic() + (30 * 60)
+    w.lockouts.start(1, "TEST", message="Recovered", shutdown_on_done=False)
+    time.sleep(1.2)
+
+    remaining = w._active_lockout_remaining(time.monotonic())
+
+    assert remaining == 0
+    assert w._lockout_until == 0
+    print("  [ok] watcher resumes when recovered lockout record expires")
+
+
+def test_watcher_tracks_shortened_recovered_lockout_timer() -> None:
+    import time
+
+    w = _watcher()
+    now = time.monotonic()
+    w._lockout_until = now + (30 * 60)
+    w.lockouts.start(2, "TEST", message="Recovered", shutdown_on_done=False)
+
+    remaining = w._active_lockout_remaining(now)
+
+    assert 0 < remaining <= 2
+    assert w._lockout_until < now + 5
+    print("  [ok] watcher follows shortened recovered lockout timer")
+
+
 def main() -> int:
     tests = [
         test_context_nudity_does_not_start_lockout,
@@ -339,6 +372,8 @@ def main() -> int:
         test_illustrated_runs_on_targeted_confirmation_only,
         test_illustrated_immediate_confidence_still_needs_confirmation,
         test_periodic_rescan_cannot_confirm_hard_strike,
+        test_watcher_resumes_after_recovered_lockout_record_expires,
+        test_watcher_tracks_shortened_recovered_lockout_timer,
     ]
     for fn in tests:
         print(f"\n{fn.__name__}")

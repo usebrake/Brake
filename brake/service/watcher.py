@@ -19,6 +19,7 @@ from brake.detectors.anime_nsfw import AnimeNSFWDetector
 from brake.detectors.base import DetectionResult, Detector
 from brake.detectors.nudity import NudityDetector
 from brake.incident_memory import IncidentLedger
+from brake.lockout.persistence import LockoutPersistence, _TamperedLockoutError
 from brake.lockout.recovery import spawn_resume_lockout_if_needed
 from brake.runtime import lockout_command
 from brake.service.scan_environment import ScanEnvironmentMonitor
@@ -122,11 +123,17 @@ def _spawn_lockout(
 
 
 class Watcher:
-    def __init__(self, store: Optional[StateStore] = None, incidents: Optional[IncidentLedger] = None) -> None:
+    def __init__(
+        self,
+        store: Optional[StateStore] = None,
+        incidents: Optional[IncidentLedger] = None,
+        lockouts: Optional[LockoutPersistence] = None,
+    ) -> None:
         self.store = store or StateStore()
         self.settings = load_settings()
         self.detectors = _build_detectors(self.settings)
         self.incidents = incidents or IncidentLedger()
+        self.lockouts = lockouts or LockoutPersistence()
         self._lockout_until = 0.0
         self._last_hard_pending_label = ""
         self._last_hard_pending_at = 0.0
@@ -199,6 +206,38 @@ class Watcher:
         if s is None:
             return True
         return bool(getattr(s, "shutdown_after_lockout", True))
+
+    def _active_lockout_remaining(self, now: float) -> float:
+        """Return seconds the watcher should pause for an active lockout.
+
+        The lockout process owns the persistent timer. Recovery during lockout
+        can shorten that timer and disable shutdown, so the watcher must not
+        rely only on the original in-memory duration it set when spawning the
+        lockout. Re-read the signed lockout record while paused so scanning
+        resumes promptly after recovery completes.
+        """
+        if now >= self._lockout_until:
+            return 0.0
+        try:
+            record = self.lockouts.resume()
+        except _TamperedLockoutError:
+            _log.critical("Active lockout record is tampered; keeping watcher paused fail-secure.")
+            return max(0.5, self._lockout_until - now)
+        except Exception as e:
+            _log.warning("Could not read active lockout record while paused: %s", e)
+            return max(0.5, self._lockout_until - now)
+
+        if record is None or record.is_expired():
+            try:
+                self.lockouts.clear()
+            except Exception:
+                pass
+            self._lockout_until = 0.0
+            return 0.0
+
+        remaining = record.remaining_seconds()
+        self._lockout_until = now + remaining
+        return remaining
 
     def _handle_detection(self, hit: DetectionResult, *, evidential: bool = True) -> bool:
         """Handle one hit. Return True when a fast confirmation scan should run.
@@ -452,10 +491,11 @@ class Watcher:
                 _log.info("Scanning active: protection is enabled.")
 
             now = time.monotonic()
-            if now < self._lockout_until:
+            lockout_remaining = self._active_lockout_remaining(now)
+            if lockout_remaining > 0:
                 pending_zoom = None
                 confirm_streak = 0
-                time.sleep(min(5.0, max(0.5, self._lockout_until - now)))
+                time.sleep(min(5.0, max(0.5, lockout_remaining)))
                 continue
 
             if now - last_power_check_at >= POWER_CHECK_SECONDS:
