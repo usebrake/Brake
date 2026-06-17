@@ -30,7 +30,7 @@ if (Test-Path $targetBrakeExe) {
 Move-Item -LiteralPath $targetElectronExe -Destination $targetBrakeExe -Force
 
 Write-Host "Stamping Brake icon into Electron shell..."
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repoRoot "packaging\set_exe_icon.ps1") -ExePath $targetBrakeExe -IconPath $iconPath
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repoRoot "packaging\set_exe_icon.ps1") -ExePath $targetBrakeExe -IconPath $iconPath -Version $Version
 if ($LASTEXITCODE -ne 0) { throw "set_exe_icon.ps1 returned $LASTEXITCODE" }
 
 $appRoot = Join-Path $bundle "resources\app"

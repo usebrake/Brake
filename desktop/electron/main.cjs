@@ -15,6 +15,8 @@ let tray = null;
 let devAgent = null;
 let isQuitting = false;
 
+app.setName("Brake");
+
 if (process.platform === "win32") {
   app.setAppUserModelId(appUserModelId);
 }
