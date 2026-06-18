@@ -5,7 +5,7 @@ Behavior:
     go through IPC. The service is the only writer to state.json  -  this closes
     the "any local Python can flip enabled" bypass.
   - If the service is down (dev mode), falls back to direct StateStore access.
-    Useful for `python -m brake.gui` without an install.
+    Useful for development runs outside the installed Windows services.
 
 Reads (.status()) are cheap and try IPC first, fall back to StateStore.
 """

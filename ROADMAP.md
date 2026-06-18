@@ -11,7 +11,7 @@
 
 ## Before Charging
 
-- Resolve GUI toolkit distribution licensing: buy a commercial PyQt license or port to PySide6/LGPL.
+- Resolve remaining PyQt distribution licensing for the lockout/uninstall guard surfaces: buy a commercial PyQt license or port those surfaces to PySide6/LGPL.
 - 20+ beta downloads.
 - 5+ confirmed successful installs.
 - 3+ users who use it for at least a week.

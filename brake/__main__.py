@@ -1,11 +1,9 @@
 """Foreground dev runner: `python -m brake`.
 
 Watches state.enabled; when ENABLED, scans the screen every interval and
-spawns the lockout subprocess on detection. Designed for terminal dev work
-before the Windows Service wrapper exists (milestone 6).
-
-Toggle protection from the GUI (`python -m brake.gui`) — both share the
-same state.json on disk.
+spawns the lockout subprocess on detection. Installed use goes through the
+Electron control panel and Windows services; this module is only for terminal
+development work.
 """
 from __future__ import annotations
 

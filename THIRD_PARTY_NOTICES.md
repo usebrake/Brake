@@ -6,7 +6,7 @@ This file is a working beta notice, not a substitute for legal review.
 
 Brake's main user-facing desktop app is Electron + React. The Python backend owns detection, state, services, lockouts, recovery, and commitment logic.
 
-PyQt6 is still present in the repository for the existing lockout window, uninstall/recovery guard UI, and legacy/reference GUI files. It is not the main app shell anymore.
+PyQt6 is still present for the existing lockout window and uninstall/recovery guard UI. It is not the main app shell anymore; the old PyQt control-panel shell is archived under `archive/legacy_pyqt_control_panel/`.
 
 Before distributing a packaged commercial binary, review every dependency license and confirm the final packaging path. In particular, do not ship proprietary PyQt6 binaries without understanding Riverbank's GPL/commercial terms or replacing those remaining PyQt surfaces.
 
@@ -22,7 +22,7 @@ Based on local package metadata in the current development environment:
 - React: MIT
 - Vite: MIT
 - Lucide React: ISC
-- PyQt6: GPL/commercial licensing applies through Riverbank/PyQt terms; currently used by lockout/guard/legacy UI surfaces
+- PyQt6: GPL/commercial licensing applies through Riverbank/PyQt terms; currently used by lockout and guard UI surfaces
 - Pillow: HPND-style/PIL license
 - mss: MIT
 - pywin32: PSF-style

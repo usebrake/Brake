@@ -36,4 +36,4 @@ In development mode, Electron stores local state in `.brake-electron-dev-data/` 
 
 ## Current Scope
 
-Electron is the primary GUI. The older PyQt files are still present as a legacy/reference layer while Electron is tested, but they are not the UI direction for Brake.
+Electron is the primary control panel. The old PyQt control-panel shell is archived under `archive/legacy_pyqt_control_panel/`. PyQt still powers the lockout window and uninstall guard until those surfaces are replaced.

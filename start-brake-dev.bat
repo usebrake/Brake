@@ -28,23 +28,23 @@ if exist "%ROOT%.brake-source-install" (
 
   if not exist "node_modules" (
     echo Brake desktop dependencies are missing.
-    echo Run installer\install.bat again from the Brake source folder.
-    echo [%date% %time%] Missing desktop\node_modules. Run installer\install.bat again.>> "%LOGFILE%"
+    echo Reinstall with BrakeSetup.exe, or rebuild the development desktop dependencies.
+    echo [%date% %time%] Missing desktop\node_modules. Reinstall or rebuild desktop dependencies.>> "%LOGFILE%"
     pause
     exit /b 1
   )
   if not exist "dist\index.html" (
     echo Brake desktop build is missing.
-    echo Run installer\install.bat again from the Brake source folder.
-    echo [%date% %time%] Missing desktop\dist\index.html. Run installer\install.bat again.>> "%LOGFILE%"
+    echo Reinstall with BrakeSetup.exe, or run npm install and npm run build in desktop.
+    echo [%date% %time%] Missing desktop\dist\index.html. Reinstall or rebuild desktop.>> "%LOGFILE%"
     pause
     exit /b 1
   )
   set "ELECTRON_EXE=%CD%\node_modules\electron\dist\electron.exe"
   if not exist "!ELECTRON_EXE!" (
     echo Brake desktop runtime is missing.
-    echo Run installer\install.bat again from the Brake source folder.
-    echo [%date% %time%] Missing !ELECTRON_EXE!. Run installer\install.bat again.>> "%LOGFILE%"
+    echo Reinstall with BrakeSetup.exe, or rebuild the development desktop runtime.
+    echo [%date% %time%] Missing !ELECTRON_EXE!. Reinstall or rebuild desktop runtime.>> "%LOGFILE%"
     pause
     exit /b 1
   )

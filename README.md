@@ -104,12 +104,6 @@ Run:
 .\scripts\doctor.ps1
 ```
 
-For development/source install checks:
-
-```powershell
-.\scripts\check_source_install.ps1
-```
-
 ## Development Tests
 
 ```powershell

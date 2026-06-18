@@ -60,8 +60,8 @@ if (Same-Path $RepoRoot $InstallRoot) {
 
 Result "Source files present" (Test-Path (Join-Path $RepoRoot "brake\desktop_bridge.py"))
 Result "Desktop app present" (Test-Path (Join-Path $RepoRoot "desktop\package.json"))
-Result "Installer present" (Test-Path (Join-Path $RepoRoot "installer\install.bat"))
-Result "Installed app folder" (Test-Path $InstallRoot) $InstallRoot "Run installer\install.bat to create it."
+Result "Installer scripts present" (Test-Path (Join-Path $RepoRoot "installer\register_service.ps1"))
+Result "Installed app folder" (Test-Path $InstallRoot) $InstallRoot "Run the latest BrakeSetup.exe to reinstall."
 
 $py = Command-Version "python" @("--version")
 Result "Python" ($null -ne $py) $py "Install Python 3.11+ x64 and check Add python.exe to PATH."
@@ -75,7 +75,7 @@ Result "npm" ($null -ne $npm) $npm "Node.js LTS should install npm."
 if ($py) {
     try {
         $import = & python -c "import brake, sys; print(brake.__file__)" 2>$null
-        Result "Python can import brake" ($LASTEXITCODE -eq 0) $import "If this fails after install, rerun installer\install.bat."
+        Result "Python can import brake" ($LASTEXITCODE -eq 0) $import "If this fails after install, run the latest BrakeSetup.exe again."
     } catch {
         Result "Python can import brake" $false $_.Exception.Message
     }
@@ -83,16 +83,16 @@ if ($py) {
 
 $shortcutMachine = Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\Brake\Brake.lnk"
 $shortcutUser = Join-Path $env:AppData "Microsoft\Windows\Start Menu\Programs\Brake\Brake.lnk"
-Result "Start Menu shortcut" ((Test-Path $shortcutMachine) -or (Test-Path $shortcutUser)) "" "Run installer\install.bat. This is expected after uninstall."
+Result "Start Menu shortcut" ((Test-Path $shortcutMachine) -or (Test-Path $shortcutUser)) "" "Run the latest BrakeSetup.exe. This is expected after uninstall."
 
 foreach ($svc in @("BrakeService", "BrakeWatchdog")) {
     $query = & sc.exe query $svc 2>$null
     $stateLine = ($query | Select-String "STATE" | Select-Object -First 1).Line
     $exists = $LASTEXITCODE -eq 0
     $running = $exists -and ($stateLine -match "RUNNING")
-    Result "$svc service exists" $exists $stateLine "Run installer\install.bat to register services."
+    Result "$svc service exists" $exists $stateLine "Run the latest BrakeSetup.exe to register services."
     if ($exists) {
-        Result "$svc service running" $running $stateLine "If installed, run installer\install.bat again to restart services."
+        Result "$svc service running" $running $stateLine "If installed, run the latest BrakeSetup.exe again or restart the Brake services."
     }
 }
 
@@ -110,7 +110,7 @@ $animeDir = Join-Path $dataDir "models\anime_nsfw"
 if (Test-Path $animeDir) {
     Result "Anime model folder" $true $animeDir
 } else {
-    Info "Anime model folder not present. This is normal until installed from the Anime tab."
+    Info "Illustrated model folder not present. This is normal until installed from the Illustrated tab."
 }
 
 Write-Host ""
