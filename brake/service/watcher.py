@@ -53,6 +53,25 @@ HARD_CONFIRM_WINDOW = t(18, 6)
 HARD_IMMEDIATE_CONFIDENCE = 0.90
 ANIME_EXPLICIT_CONFIDENCE = 0.90
 POST_LOCKOUT_RECOVERY_GRACE_SECONDS = 10.0
+ILLUSTRATED_NATIVE_FULLSCREEN_STRIKES = 3
+ILLUSTRATED_NATIVE_FULLSCREEN_WINDOW = 30.0
+ILLUSTRATED_NATIVE_FULLSCREEN_MIN_SPAN = 8.0
+
+_ILLUSTRATED_FAST_CONFIRM_PROCESSES = {
+    "brave.exe",
+    "chrome.exe",
+    "firefox.exe",
+    "msedge.exe",
+    "opera.exe",
+    "vivaldi.exe",
+    "vlc.exe",
+    "mpv.exe",
+    "potplayermini64.exe",
+    "potplayermini.exe",
+    "wmplayer.exe",
+    "photos.exe",
+    "video.ui.exe",
+}
 
 
 def _ordinal(n: int) -> str:
@@ -142,6 +161,8 @@ class Watcher:
         self._hard_strike_count = 0
         self._lockout_was_recovered = False
         self._post_lockout_recovery_grace_until = 0.0
+        self._illustrated_native_fullscreen_first_at = 0.0
+        self._illustrated_native_fullscreen_strikes = 0
         self.scan_environment = ScanEnvironmentMonitor()
         self._state_cached_at = 0.0
         self._state_cache: Optional[tuple] = None  # (state, fail_secure)
@@ -270,6 +291,64 @@ class Watcher:
         return self._handle_hard(
             hit, fast_confirm=True, evidential=evidential
         )
+
+    @staticmethod
+    def _is_native_fullscreen_illustrated_surface(snapshot) -> bool:
+        if snapshot is None or not getattr(snapshot, "fullscreen", False):
+            return False
+        process_name = str(getattr(snapshot, "process_name", "") or "").lower()
+        return process_name not in _ILLUSTRATED_FAST_CONFIRM_PROCESSES
+
+    def _reset_illustrated_native_fullscreen_strikes(self) -> None:
+        self._illustrated_native_fullscreen_first_at = 0.0
+        self._illustrated_native_fullscreen_strikes = 0
+
+    def _handle_illustrated_native_fullscreen(self, hit: DetectionResult, *, evidential: bool = True) -> bool:
+        if not evidential:
+            _log.info(
+                "illustrated native fullscreen hit on unchanged/confirmation scan not counted: label=%s",
+                hit.label,
+            )
+            return False
+
+        now = time.monotonic()
+        if (
+            self._illustrated_native_fullscreen_first_at <= 0
+            or now - self._illustrated_native_fullscreen_first_at > ILLUSTRATED_NATIVE_FULLSCREEN_WINDOW
+        ):
+            self._illustrated_native_fullscreen_first_at = now
+            self._illustrated_native_fullscreen_strikes = 1
+        else:
+            self._illustrated_native_fullscreen_strikes += 1
+
+        span = now - self._illustrated_native_fullscreen_first_at
+        if (
+            self._illustrated_native_fullscreen_strikes >= ILLUSTRATED_NATIVE_FULLSCREEN_STRIKES
+            and span >= ILLUSTRATED_NATIVE_FULLSCREEN_MIN_SPAN
+        ):
+            self._reset_illustrated_native_fullscreen_strikes()
+            self._last_hard_pending_label = ""
+            self._last_hard_pending_at = 0.0
+            self._hard_strike_count = 0
+            _log.warning(
+                "illustrated native fullscreen detection confirmed: label=%s conf=%.2f strikes=%d span=%.1fs",
+                hit.label,
+                hit.confidence,
+                ILLUSTRATED_NATIVE_FULLSCREEN_STRIKES,
+                span,
+            )
+            self._apply_hard_lockout(hit)
+            return False
+
+        _log.warning(
+            "illustrated native fullscreen detection pending: label=%s conf=%.2f strikes=%d/%d span=%.1fs",
+            hit.label,
+            hit.confidence,
+            self._illustrated_native_fullscreen_strikes,
+            ILLUSTRATED_NATIVE_FULLSCREEN_STRIKES,
+            span,
+        )
+        return False
 
     def _record_detection_event(
         self,
@@ -514,6 +593,7 @@ class Watcher:
             if lockout_remaining > 0:
                 pending_zoom = None
                 confirm_streak = 0
+                self._reset_illustrated_native_fullscreen_strikes()
                 time.sleep(min(5.0, max(0.5, lockout_remaining)))
                 continue
 
@@ -587,18 +667,31 @@ class Watcher:
                 wants_confirm = False
                 confirm_region = ""
                 if hit:
-                    # Periodic safety sweeps re-scan unchanged pixels; they
-                    # may arm strikes/warnings but never confirm a lockout.
-                    wants_confirm = self._handle_detection(
-                        hit, evidential=(decision.reason != "periodic")
-                    )
-                    confirm_region = hit.region
+                    if (
+                        hit.detector == "anime_nsfw"
+                        and self._is_native_fullscreen_illustrated_surface(snapshot)
+                    ):
+                        wants_confirm = self._handle_illustrated_native_fullscreen(
+                            hit,
+                            evidential=(decision.reason not in {"confirm", "periodic"}),
+                        )
+                    else:
+                        self._reset_illustrated_native_fullscreen_strikes()
+                        # Periodic safety sweeps re-scan unchanged pixels; they
+                        # may arm strikes/warnings but never confirm a lockout.
+                        wants_confirm = self._handle_detection(
+                            hit, evidential=(decision.reason != "periodic")
+                        )
+                        confirm_region = hit.region
                 elif suspicion is not None:
+                    self._reset_illustrated_native_fullscreen_strikes()
                     # Something landed below the trigger thresholds. Zoom into
                     # that region next tick: small/zoomed-out content usually
                     # crosses the threshold at double resolution.
                     wants_confirm = True
                     confirm_region = suspicion.region
+                elif decision.sweep == "full":
+                    self._reset_illustrated_native_fullscreen_strikes()
 
                 if (
                     wants_confirm

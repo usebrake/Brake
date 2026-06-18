@@ -25,6 +25,12 @@ class _Call:
     shutdown_on_done: bool = False
 
 
+@dataclass
+class _Snapshot:
+    fullscreen: bool
+    process_name: str
+
+
 class _Store:
     def __init__(
         self,
@@ -310,6 +316,68 @@ def test_illustrated_immediate_confidence_still_needs_confirmation() -> None:
     print("  [ok] illustrated high confidence cannot lock on one frame")
 
 
+def test_illustrated_native_fullscreen_does_not_fast_confirm() -> None:
+    import brake.service.watcher as watcher_mod
+
+    calls, original_spawn = _patch_lockout(watcher_mod)
+    try:
+        w = _watcher(anime_detection_enabled=True)
+        hit = w._apply_anime_mode(_anime_context_hit())
+        assert hit.severity == "hard"
+        assert w._is_native_fullscreen_illustrated_surface(
+            _Snapshot(fullscreen=True, process_name="crab game.exe")
+        )
+        assert not w._is_native_fullscreen_illustrated_surface(
+            _Snapshot(fullscreen=True, process_name="chrome.exe")
+        )
+
+        assert w._handle_illustrated_native_fullscreen(hit) is False
+        assert w._handle_illustrated_native_fullscreen(hit) is False
+    finally:
+        watcher_mod._spawn_lockout = original_spawn
+
+    assert calls == []
+    print("  [ok] illustrated native fullscreen skips fast two-strike confirmation")
+
+
+def test_illustrated_native_fullscreen_can_lock_when_persistent() -> None:
+    import brake.service.watcher as watcher_mod
+
+    calls, original_spawn = _patch_lockout(watcher_mod)
+    try:
+        w = _watcher(anime_detection_enabled=True)
+        hit = w._apply_anime_mode(_anime_context_hit())
+        w._handle_illustrated_native_fullscreen(hit)
+        w._handle_illustrated_native_fullscreen(hit)
+        w._illustrated_native_fullscreen_first_at -= 9.0
+        w._handle_illustrated_native_fullscreen(hit)
+    finally:
+        watcher_mod._spawn_lockout = original_spawn
+
+    assert len(calls) == 1
+    assert calls[0].reason.startswith("EXPLICIT NSFW ART")
+    print("  [ok] persistent illustrated native fullscreen hits can still lock")
+
+
+def test_illustrated_native_fullscreen_ignores_confirmation_rescans() -> None:
+    import brake.service.watcher as watcher_mod
+
+    calls, original_spawn = _patch_lockout(watcher_mod)
+    try:
+        w = _watcher(anime_detection_enabled=True)
+        hit = w._apply_anime_mode(_anime_context_hit())
+        w._handle_illustrated_native_fullscreen(hit)
+        w._illustrated_native_fullscreen_first_at -= 20.0
+        w._handle_illustrated_native_fullscreen(hit, evidential=False)
+        w._handle_illustrated_native_fullscreen(hit, evidential=False)
+    finally:
+        watcher_mod._spawn_lockout = original_spawn
+
+    assert calls == []
+    assert w._illustrated_native_fullscreen_strikes == 1
+    print("  [ok] illustrated native fullscreen ignores confirmation rescans")
+
+
 def test_periodic_rescan_cannot_confirm_hard_strike() -> None:
     import brake.service.watcher as watcher_mod
 
@@ -392,6 +460,9 @@ def main() -> int:
         test_illustrated_on_can_trigger_full_lockout,
         test_illustrated_runs_on_targeted_confirmation_only,
         test_illustrated_immediate_confidence_still_needs_confirmation,
+        test_illustrated_native_fullscreen_does_not_fast_confirm,
+        test_illustrated_native_fullscreen_can_lock_when_persistent,
+        test_illustrated_native_fullscreen_ignores_confirmation_rescans,
         test_periodic_rescan_cannot_confirm_hard_strike,
         test_watcher_resumes_after_recovered_lockout_record_expires,
         test_watcher_tracks_shortened_recovered_lockout_timer,
