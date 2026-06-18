@@ -415,6 +415,7 @@ class Watcher:
         if (
             (now - self._last_hard_pending_at) <= HARD_CONFIRM_WINDOW
             and self._hard_strike_count >= 1
+            and label == self._last_hard_pending_label
         ):
             self._last_hard_pending_label = ""
             self._last_hard_pending_at = 0.0
@@ -422,6 +423,16 @@ class Watcher:
             _log.warning("hard detection confirmed by second strike: label=%s conf=%.2f", label, hit.confidence)
             self._apply_hard_lockout(hit)
             return False
+        if (
+            self._last_hard_pending_label
+            and (now - self._last_hard_pending_at) <= HARD_CONFIRM_WINDOW
+            and label != self._last_hard_pending_label
+        ):
+            _log.info(
+                "hard detection label changed; re-arming instead of confirming: previous=%s next=%s",
+                self._last_hard_pending_label,
+                label,
+            )
         self._last_hard_pending_label = label
         self._last_hard_pending_at = now
         self._hard_strike_count = 1

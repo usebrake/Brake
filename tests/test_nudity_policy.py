@@ -34,7 +34,7 @@ _IMG = Image.new("RGB", (100, 100), "black")
 
 
 def test_solo_high_confidence_hard_triggers() -> None:
-    det = _detector([{"class": "MALE_GENITALIA_EXPOSED", "score": 0.80}])
+    det = _detector([{"class": "MALE_GENITALIA_EXPOSED", "score": 0.90}])
     res = det.scan(_IMG)
     assert res.triggered is True
     assert res.severity == "hard"
@@ -63,6 +63,31 @@ def test_corroborated_mid_hard_triggers() -> None:
     assert res.triggered is True
     assert res.severity == "hard"
     print("  [ok] corroborated mid-confidence hard finding triggers")
+
+
+def test_duplicate_hard_class_does_not_corroborate_itself() -> None:
+    det = _detector([
+        {"class": "MALE_GENITALIA_EXPOSED", "score": 0.70},
+        {"class": "MALE_GENITALIA_EXPOSED", "score": 0.69},
+    ])
+    res = det.scan(_IMG)
+    assert res.triggered is False
+    assert res.severity == "hard"
+    assert "SUSPECT" in res.label
+    print("  [ok] duplicate hard boxes do not count as anatomical agreement")
+
+
+def test_face_dominant_male_genitalia_needs_near_certain_score() -> None:
+    det = _detector([
+        {"class": "FACE_MALE", "score": 0.84},
+        {"class": "FACE_FEMALE", "score": 0.80},
+        {"class": "MALE_GENITALIA_EXPOSED", "score": 0.84},
+    ])
+    res = det.scan(_IMG)
+    assert res.triggered is False
+    assert res.severity == "hard"
+    assert "SUSPECT" in res.label
+    print("  [ok] face-dominant male-genital hit is demoted unless near certain")
 
 
 def test_hard_near_miss_reports_suspicion_only() -> None:
@@ -276,6 +301,8 @@ def main() -> int:
         test_solo_high_confidence_hard_triggers,
         test_uncorroborated_mid_hard_is_demoted_to_suspicion,
         test_corroborated_mid_hard_triggers,
+        test_duplicate_hard_class_does_not_corroborate_itself,
+        test_face_dominant_male_genitalia_needs_near_certain_score,
         test_hard_near_miss_reports_suspicion_only,
         test_hard_score_below_suspicion_band_is_negative,
         test_tiny_box_cannot_trigger,

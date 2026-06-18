@@ -22,7 +22,19 @@ HARD_THRESHOLDS = {
 # characters, skin-toned UI, and render noise produce isolated low-score
 # genital boxes; real explicit imagery almost always detects several body
 # parts together or scores high on its own.
-HARD_SOLO_CONFIDENCE = 0.75
+# Solo hard findings need more confidence than the model's raw trigger
+# threshold. Male-genital false positives are especially common in clothed
+# talking-head scenes, so they get a higher solo bar while still allowing fast
+# lockouts when there is anatomical agreement.
+HARD_SOLO_CONFIDENCE = 0.78
+HARD_SOLO_CONFIDENCE_BY_CLASS = {
+    "MALE_GENITALIA_EXPOSED": 0.82,
+    "FEMALE_GENITALIA_EXPOSED": 0.78,
+    "ANUS_EXPOSED": 0.82,
+}
+FACE_CLASSES = {"FACE_MALE", "FACE_FEMALE"}
+FACE_DOMINANT_MIN_SCORE = 0.65
+FACE_DOMINANT_MALE_GENITALIA_SOLO_CONFIDENCE = 0.90
 CORROBORATION_MIN_SCORE = 0.45
 CORROBORATION_CLASSES = {
     "MALE_GENITALIA_EXPOSED",
@@ -264,6 +276,36 @@ class NudityDetector(Detector):
         aspect = w / h
         return MIN_BOX_ASPECT <= aspect <= MAX_BOX_ASPECT
 
+    @staticmethod
+    def _related_regions(region: str) -> set[str]:
+        names = {region, "full"}
+        current = region
+        while "~" in current:
+            current = current.rsplit("~", 1)[0]
+            names.add(current)
+        if region.startswith("video_center"):
+            names.add("video_center")
+        if region.startswith("changed"):
+            names.add("changed")
+        return names
+
+    @classmethod
+    def _solo_confidence_for(
+        cls,
+        class_name: str,
+        region: str,
+        face_best_by_region: dict[str, float],
+    ) -> float:
+        threshold = HARD_SOLO_CONFIDENCE_BY_CLASS.get(class_name, HARD_SOLO_CONFIDENCE)
+        if class_name == "MALE_GENITALIA_EXPOSED":
+            face_score = max(
+                (face_best_by_region.get(name, 0.0) for name in cls._related_regions(region)),
+                default=0.0,
+            )
+            if face_score >= FACE_DOMINANT_MIN_SCORE:
+                threshold = max(threshold, FACE_DOMINANT_MALE_GENITALIA_SOLO_CONFIDENCE)
+        return threshold
+
     def scan(
         self,
         image: Image.Image,
@@ -308,7 +350,8 @@ class NudityDetector(Detector):
         hard_suspect_score = 0.0
         hard_suspect_region = ""
         hard_candidates: list[tuple[float, str, str]] = []  # (score, class, region)
-        corroboration_counts: dict[str, int] = {}
+        corroboration_classes: dict[str, set[str]] = {}
+        face_best_by_region: dict[str, float] = {}
         region_counts: dict[str, int] = {}
         region_best: dict[str, float] = {}
         for f in findings:
@@ -319,12 +362,15 @@ class NudityDetector(Detector):
             hard_threshold = HARD_THRESHOLDS.get(cls)
             context_threshold = CONTEXT_THRESHOLDS.get(cls)
 
+            if cls in FACE_CLASSES and score > face_best_by_region.get(region, 0.0):
+                face_best_by_region[region] = score
+
             if (
                 eligible
                 and cls in CORROBORATION_CLASSES
                 and score >= CORROBORATION_MIN_SCORE
             ):
-                corroboration_counts[region] = corroboration_counts.get(region, 0) + 1
+                corroboration_classes.setdefault(region, set()).add(cls)
 
             counts_toward_multi = (
                 (hard_threshold is not None and score >= HARD_SUSPICION_THRESHOLD)
@@ -360,14 +406,15 @@ class NudityDetector(Detector):
         hard_score = 0.0
         hard_region = ""
         for score, cls, region in sorted(hard_candidates, reverse=True):
-            corroborated = corroboration_counts.get(region, 0) >= 2
-            if score >= HARD_SOLO_CONFIDENCE or corroborated:
+            corroborated = len(corroboration_classes.get(region, set())) >= 2
+            solo_confidence = self._solo_confidence_for(cls, region, face_best_by_region)
+            if score >= solo_confidence or corroborated:
                 hard_class, hard_score, hard_region = cls, score, region
                 break
             if score > hard_suspect_score:
                 _log.info(
-                    "hard finding demoted to suspicion (uncorroborated): %s %.2f in %s",
-                    cls, score, region,
+                    "hard finding demoted to suspicion (uncorroborated solo): %s %.2f in %s threshold=%.2f",
+                    cls, score, region, solo_confidence,
                 )
                 hard_suspect_class, hard_suspect_score, hard_suspect_region = cls, score, region
 

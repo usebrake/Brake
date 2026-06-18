@@ -398,6 +398,25 @@ def test_periodic_rescan_cannot_confirm_hard_strike() -> None:
     print("  [ok] periodic rescans cannot confirm a pending hard strike")
 
 
+def test_different_hard_label_rearms_instead_of_confirming() -> None:
+    import brake.service.watcher as watcher_mod
+
+    calls, original_spawn = _patch_lockout(watcher_mod)
+    try:
+        w = _watcher()
+        first = _hard_hit("EXPLICIT (MALE_GENITALIA_EXPOSED)")
+        first.confidence = 0.80
+        second = _hard_hit("EXPLICIT (FEMALE_GENITALIA_EXPOSED)")
+        second.confidence = 0.80
+        assert w._handle_detection(first) is True
+        assert w._handle_detection(second) is True
+    finally:
+        watcher_mod._spawn_lockout = original_spawn
+
+    assert calls == []
+    print("  [ok] different hard labels re-arm instead of confirming")
+
+
 def test_watcher_resumes_after_recovered_lockout_record_expires() -> None:
     import time
 
@@ -464,6 +483,7 @@ def main() -> int:
         test_illustrated_native_fullscreen_can_lock_when_persistent,
         test_illustrated_native_fullscreen_ignores_confirmation_rescans,
         test_periodic_rescan_cannot_confirm_hard_strike,
+        test_different_hard_label_rearms_instead_of_confirming,
         test_watcher_resumes_after_recovered_lockout_record_expires,
         test_watcher_tracks_shortened_recovered_lockout_timer,
         test_normal_lockout_expiry_does_not_arm_recovery_grace,
