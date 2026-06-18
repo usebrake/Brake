@@ -48,6 +48,15 @@ CONTEXT_THRESHOLDS = {
     "FEMALE_BREAST_EXPOSED": 0.75,
     "BUTTOCKS_EXPOSED": 0.75,
 }
+# Covered-body and belly findings are common in swimsuit/photo material. They
+# are not explicit, but they are useful context for the watcher: if NudeNet
+# sees this kind of photographic body context and still refuses to trigger,
+# the illustrated/general NSFW classifier should not overrule it by itself.
+PHOTO_BODY_CONTEXT_CLASSES = {
+    "FEMALE_BREAST_COVERED",
+    "BELLY_EXPOSED",
+}
+PHOTO_BODY_CONTEXT_MIN_SCORE = 0.35
 CONTEXT_SOFT_THRESHOLD = 0.65
 # Below the hard thresholds but high enough to be worth a fast follow-up scan.
 HARD_SUSPICION_THRESHOLD = 0.45
@@ -289,6 +298,27 @@ class NudityDetector(Detector):
             names.add("changed")
         return names
 
+    @staticmethod
+    def _photo_body_context_details(findings: list[dict]) -> str:
+        best_score = 0.0
+        best_class = ""
+        best_region = ""
+        for finding in findings:
+            cls = str(finding.get("class", ""))
+            if cls not in PHOTO_BODY_CONTEXT_CLASSES:
+                continue
+            try:
+                score = float(finding.get("score", 0.0))
+            except (TypeError, ValueError):
+                continue
+            if score >= PHOTO_BODY_CONTEXT_MIN_SCORE and score > best_score:
+                best_score = score
+                best_class = cls
+                best_region = str(finding.get("_region", ""))
+        if not best_class:
+            return ""
+        return f"photo_body_context=1;class={best_class};score={best_score:.2f};region={best_region}"
+
     @classmethod
     def _solo_confidence_for(
         cls,
@@ -354,6 +384,7 @@ class NudityDetector(Detector):
         face_best_by_region: dict[str, float] = {}
         region_counts: dict[str, int] = {}
         region_best: dict[str, float] = {}
+        photo_body_context = self._photo_body_context_details(findings)
         for f in findings:
             cls = f.get("class", "")
             score = float(f.get("score", 0.0))
@@ -426,6 +457,7 @@ class NudityDetector(Detector):
                 label=f"EXPLICIT ({hard_class})",
                 severity="hard",
                 region=hard_region,
+                details=photo_body_context or None,
             )
         if context_class:
             return DetectionResult(
@@ -435,6 +467,7 @@ class NudityDetector(Detector):
                 label=f"CONTEXT NUDITY ({context_class})",
                 severity="context",
                 region=context_region,
+                details=photo_body_context or None,
             )
         # Non-triggered results below are suspicion only: the watcher uses them
         # to schedule a fast zoomed follow-up scan, never to lock.
@@ -446,6 +479,7 @@ class NudityDetector(Detector):
                 label=f"SUSPECT ({hard_suspect_class})",
                 severity="hard",
                 region=hard_suspect_region,
+                details=photo_body_context or None,
             )
         multi_region = ""
         for region, count in region_counts.items():
@@ -461,6 +495,7 @@ class NudityDetector(Detector):
                 label=f"CONTEXT NUDITY (MULTIPLE/{multi_region})",
                 severity="context",
                 region=multi_region,
+                details=photo_body_context or None,
             )
         if soft_context_class:
             return DetectionResult(
@@ -470,5 +505,13 @@ class NudityDetector(Detector):
                 label=f"CONTEXT NUDITY ({soft_context_class})",
                 severity="context",
                 region=soft_context_region,
+                details=photo_body_context or None,
+            )
+        if photo_body_context:
+            return DetectionResult(
+                detector=self.name,
+                triggered=False,
+                confidence=0.0,
+                details=photo_body_context,
             )
         return DetectionResult.negative(self.name)

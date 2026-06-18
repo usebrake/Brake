@@ -1,6 +1,5 @@
 import {
   Activity,
-  Clock,
   Download,
   Info,
   Gauge,
@@ -104,7 +103,7 @@ function formatRecoveryUnlockLeft(unlockAfter, now) {
 
 function animeStatusCopy(status) {
   const labels = {
-    ready: "Ready",
+    ready: "Installed",
     not_installed: "Not installed",
     missing_dependencies: "Not installed",
     installing: "Installing"
@@ -143,7 +142,7 @@ function confidenceCopy(confidence) {
 
 function DetectionLogs({ events, loading, onRefresh, onClear }) {
   return (
-    <Card icon={ScrollText} title="Detection events" subtitle="Only meaningful detector hits are shown here. Clean scans are not logged.">
+    <Card icon={ScrollText} title="Detection events">
       <div className="log-toolbar">
         <span>{events.length ? `${events.length} recent ${events.length === 1 ? "event" : "events"}` : loading ? "Loading..." : "No detection events yet"}</span>
         <div className="log-actions">
@@ -194,41 +193,38 @@ function StatusPanel({ status, now, onToggleProtection }) {
   const recoveryLeft = status.recoveryUnlockPending ? formatRecoveryUnlockLeft(status.recoveryUnlockAfter, now) : "";
   const state = failSecure ? "protected" : committed ? "committed" : enabled ? "protected" : "off";
   const commitmentLeft = committed && !recoveryLeft ? formatCommitmentLeft(status.committedUntil, now) : "";
+  const description = failSecure
+    ? "Brake could not verify its settings. Use your recovery code to repair protection."
+    : recoveryLeft
+    ? "Recovery accepted. Brake will turn protection off after the cooldown."
+    : committed
+    ? ""
+    : enabled
+      ? "Screen checks active."
+      : "Screen checks off.";
 
   return (
     <section className={`status-panel ${state}`}>
       <div className="status-rail" />
       <button
-        className="status-icon status-toggle"
+        className="status-orb"
         type="button"
         aria-label={failSecure ? "Repair protection" : enabled ? "Turn off protection" : "Turn on protection"}
         title={failSecure ? "Repair protection" : enabled ? "Turn off protection" : "Turn on protection"}
         onClick={onToggleProtection}
       >
         {enabled || committed ? (
-          <ShieldCheck size={28} />
+          <ShieldCheck size={44} strokeWidth={1.8} />
         ) : (
-          <Power size={27} />
+          <Power size={44} strokeWidth={1.8} />
         )}
       </button>
       <div className="status-copy">
-        <div className="eyebrow">{failSecure ? "SAFEGUARD ACTIVE" : recoveryLeft ? "RECOVERY COOLDOWN" : committed ? "COMMITTED" : enabled ? "PROTECTED" : "OFF"}</div>
         <h2>{failSecure ? "Protection needs repair" : recoveryLeft ? "Emergency unlock pending" : committed ? "Commitment active" : enabled ? "Protection is active" : "Protection is off"}</h2>
-        <p>
-          {failSecure
-            ? "Brake could not verify its settings, so screen checks stay active. Use your recovery code to repair protection."
-            : recoveryLeft
-            ? "Recovery accepted. Brake will turn protection off after the cooldown."
-            : committed
-            ? "Your commitment is active. Password disable is unavailable until it ends."
-            : enabled
-              ? "Screen checks are active. Nothing leaves this device."
-              : "Screen checks are off."}
-        </p>
+        {description ? <p>{description}</p> : null}
         {commitmentLeft ? <p className="status-meta">{commitmentLeft}</p> : null}
         {recoveryLeft ? <p className="status-meta">{recoveryLeft}</p> : null}
       </div>
-      <Badge state={state}>{failSecure ? "Repair required" : recoveryLeft ? recoveryLeft : committed ? "Locked in" : enabled ? "Active" : "Idle"}</Badge>
     </section>
   );
 }
@@ -631,7 +627,7 @@ function GuideModal({ tab, status, onClose }) {
       ) : tab === "illustrated" ? (
         <div className="guide">
           <GuideSection title="Illustrated detection">
-            <p>The illustrated detector is optional because it uses a separate local model for anime, drawings, and rendered explicit content.</p>
+            <p>The illustrated detector uses a separate local model for anime, drawings, and rendered explicit content.</p>
             <p>When it is off, Brake ignores illustrated detections. When it is on, high-confidence illustrated explicit content can trigger the full lockout.</p>
           </GuideSection>
           <GuideSection title="Model download">
@@ -1184,7 +1180,6 @@ export default function App() {
           <BrakeMark tone={protectedTone} />
           <div>
             <div className="brand-name">Brake</div>
-            <div className="brand-subtitle">Local screen accountability.</div>
           </div>
         </div>
       </header>
@@ -1209,28 +1204,13 @@ export default function App() {
           <>
             <div className="page-head">
               <h1>Overview</h1>
-              <p>Brake checks locally and steps in when explicit content appears.</p>
               {notice ? <p className="notice">{notice}</p> : null}
             </div>
             <StatusPanel status={status} now={now} onToggleProtection={toggleProtection} />
             <div className="overview-single">
-              <Card icon={Clock} title="Session controls" subtitle="Choose what happens when protection is running.">
-                <SettingRow
-                  title="Commitment"
-                  description={
-                    status.commitmentActive
-                      ? "Protection is locked until the commitment ends."
-                      : "Lock protection in for a set time so your password cannot turn it off early."
-                  }
-                  aside={
-                    <button className={`pill-action ${status.commitmentActive ? "active" : ""}`} disabled={status.failSecure} onClick={toggleCommitment}>
-                      {status.commitmentActive ? "Extend commitment" : "No commitment set"}
-                    </button>
-                  }
-                />
+              <section className="overview-controls" aria-label="Overview controls">
                 <SettingRow
                   title="Lockout length"
-                  description="How long the screen stays locked after clear explicit content is detected."
                   aside={
                     <div className="stepper-control">
                       <button aria-label="Decrease lockout length" disabled={status.failSecure} onClick={() => changeDuration(-1)}>
@@ -1256,25 +1236,24 @@ export default function App() {
                     </div>
                   }
                 />
-              </Card>
+              </section>
             </div>
           </>
         ) : tab === "illustrated" ? (
           <>
             <div className="page-head">
               <h1>Illustrated</h1>
-              <p>Optional local detection for drawings, anime, and rendered explicit content.</p>
               {notice ? <p className="notice">{notice}</p> : null}
             </div>
-            <Card icon={ScanEye} title="Illustrated detector" subtitle="Downloads once and runs locally on this computer.">
-              <SettingRow
-                title="Model"
-                description="Required before illustrated detection can be turned on."
-                aside={<Badge state={status.animeModelStatus === "ready" ? "protected" : ""}>{animeStatusCopy(status.animeModelStatus)}</Badge>}
-              />
+            <Card icon={ScanEye} title="Illustrated detector">
+              {status.animeModelStatus !== "ready" ? (
+                <SettingRow
+                  title="Detector package"
+                  aside={<Badge state="">{animeStatusCopy(status.animeModelStatus)}</Badge>}
+                />
+              ) : null}
               <SettingRow
                 title="Illustrated detection"
-                description="When on, high-confidence illustrated explicit content can trigger a full lockout."
                 aside={
                   <button
                     className={`pill-action ${status.animeDetectionEnabled ? "active" : ""}`}
@@ -1285,23 +1264,24 @@ export default function App() {
                   </button>
                 }
               />
-              <div className="card-actions">
-                <Button
-                  variant="primary"
-                  icon={Download}
-                  disabled={status.failSecure || animeInstalling || status.animeModelStatus === "ready"}
-                  onClick={installAnimeDetector}
-                >
-                  {animeInstalling ? "Installing..." : status.animeModelStatus === "ready" ? "Installed" : "Download detector"}
-                </Button>
-              </div>
+              {status.animeModelStatus !== "ready" ? (
+                <div className="card-actions">
+                  <Button
+                    variant="primary"
+                    icon={Download}
+                    disabled={status.failSecure || animeInstalling}
+                    onClick={installAnimeDetector}
+                  >
+                    {animeInstalling ? "Installing..." : "Download detector"}
+                  </Button>
+                </div>
+              ) : null}
             </Card>
           </>
         ) : tab === "logs" ? (
           <>
             <div className="page-head">
               <h1>Logs</h1>
-              <p>Recent detector hits only. Clean scans are intentionally hidden.</p>
               {notice ? <p className="notice">{notice}</p> : null}
             </div>
             <DetectionLogs
@@ -1315,11 +1295,10 @@ export default function App() {
           <>
             <div className="page-head">
               <h1>Advanced</h1>
-              <p>Recovery controls and optional local tools.</p>
               {notice ? <p className="notice">{notice}</p> : null}
             </div>
             <div className="advanced-stack">
-              <Card icon={KeyRound} title="Recovery code" subtitle="Choose how emergency recovery behaves on this device.">
+              <Card icon={KeyRound} title="Recovery code">
                 <SettingRow
                   title="Emergency cooldown"
                   description="How long Brake waits before the recovery code turns protection off."
@@ -1358,7 +1337,7 @@ export default function App() {
                   }
                 />
               </Card>
-              <Card icon={Power} title="Lockout behavior" subtitle="Choose what happens when a full lockout timer ends.">
+              <Card icon={Power} title="Lockout behavior">
                 <SettingRow
                   title="Shutdown after lockout"
                   description="When on, Windows shuts down after a full lockout timer ends. During commitment, this cannot be turned off."
@@ -1384,9 +1363,11 @@ export default function App() {
       </section>
 
       <footer className="actionbar">
-        <Button variant="primary" icon={status.failSecure ? KeyRound : status.enabled ? ShieldOff : ShieldCheck} onClick={toggleProtection}>
-          {status.failSecure ? "Repair with recovery code" : status.enabled ? "Turn off protection" : "Turn on protection"}
-        </Button>
+        {tab !== "overview" ? (
+          <Button variant="primary" icon={status.failSecure ? KeyRound : status.enabled ? ShieldOff : ShieldCheck} onClick={toggleProtection}>
+            {status.failSecure ? "Repair with recovery code" : status.enabled ? "Turn off protection" : "Turn on protection"}
+          </Button>
+        ) : null}
         <Button variant="warning" onClick={toggleCommitment} disabled={status.failSecure}>
           {status.commitmentActive ? "Extend commitment" : "Lock in commitment"}
         </Button>

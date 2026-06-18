@@ -108,6 +108,17 @@ def _anime_context_hit(label: str = "POSSIBLE NSFW ART (full)"):
     )
 
 
+def _nudity_photo_context_result():
+    from brake.detectors.base import DetectionResult
+
+    return DetectionResult(
+        detector="nudity",
+        triggered=False,
+        confidence=0.0,
+        details="photo_body_context=1;class=FEMALE_BREAST_COVERED;score=0.78;region=center",
+    )
+
+
 def _watcher(*, anime_detection_enabled: bool = False, shutdown_after_lockout: bool = True):
     from brake.incident_memory import IncidentLedger
     from brake.lockout.persistence import LockoutPersistence
@@ -273,6 +284,33 @@ def test_illustrated_on_can_trigger_full_lockout() -> None:
     assert len(calls) == 1
     assert calls[0].shutdown_on_done is True
     print("  [ok] illustrated detector needs two evidential hits before lockout")
+
+
+def test_illustrated_photo_context_is_suspicion_only() -> None:
+    import brake.service.watcher as watcher_mod
+
+    calls, original_spawn = _patch_lockout(watcher_mod)
+    original_capture = watcher_mod.capture_all_monitors
+    try:
+        watcher_mod.capture_all_monitors = lambda: Image.new("RGB", (10, 10), "black")
+        w = _watcher(anime_detection_enabled=True)
+        w.detectors = [
+            _Detector(_nudity_photo_context_result(), name="nudity"),
+            _Detector(_anime_context_hit(), name="anime_nsfw"),
+        ]
+        hit, suspicion = w._scan_once()
+        assert hit is None
+        assert suspicion is not None
+        assert suspicion.detector == "anime_nsfw"
+        assert suspicion.triggered is False
+        assert suspicion.severity == "context"
+        assert "SUSPECT" in suspicion.label
+    finally:
+        watcher_mod.capture_all_monitors = original_capture
+        watcher_mod._spawn_lockout = original_spawn
+
+    assert calls == []
+    print("  [ok] illustrated hits defer to NudeNet on photo/swimsuit context")
 
 
 def test_illustrated_runs_on_targeted_confirmation_only() -> None:
@@ -477,6 +515,7 @@ def main() -> int:
         test_shutdown_after_lockout_setting_is_respected,
         test_illustrated_off_skips_illustrated_detector,
         test_illustrated_on_can_trigger_full_lockout,
+        test_illustrated_photo_context_is_suspicion_only,
         test_illustrated_runs_on_targeted_confirmation_only,
         test_illustrated_immediate_confidence_still_needs_confirmation,
         test_illustrated_native_fullscreen_does_not_fast_confirm,

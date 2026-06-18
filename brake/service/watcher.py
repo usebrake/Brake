@@ -74,6 +74,10 @@ _ILLUSTRATED_FAST_CONFIRM_PROCESSES = {
 }
 
 
+def _has_photo_body_context(result: Optional[DetectionResult]) -> bool:
+    return bool(result and result.details and "photo_body_context=1" in result.details)
+
+
 def _ordinal(n: int) -> str:
     n = max(1, int(n))
     if 10 <= (n % 100) <= 20:
@@ -395,6 +399,35 @@ class Watcher:
             region=result.region,
         )
 
+    def _apply_illustrated_photo_guard(
+        self,
+        result: DetectionResult,
+        *,
+        nudity_result: Optional[DetectionResult],
+    ) -> DetectionResult:
+        if (
+            result.detector != "anime_nsfw"
+            or not result.triggered
+            or result.severity != "hard"
+            or not _has_photo_body_context(nudity_result)
+        ):
+            return result
+        _log.warning(
+            "illustrated hard hit downgraded by NudeNet photo-body context: label=%s conf=%.2f nudity_details=%s",
+            result.label,
+            result.confidence,
+            nudity_result.details,
+        )
+        return DetectionResult(
+            detector=result.detector,
+            triggered=False,
+            confidence=result.confidence,
+            label=(result.label or "SUSPECT NSFW ART").replace("EXPLICIT", "SUSPECT"),
+            severity="context",
+            region=result.region,
+            details=f"photo_guard=1;{result.details or ''}".strip(";"),
+        )
+
     def _handle_hard(
         self, hit: DetectionResult, *, fast_confirm: bool = False, evidential: bool = True
     ) -> bool:
@@ -499,6 +532,7 @@ class Watcher:
         anime_enabled = self._anime_detection_enabled()
         suspicion: Optional[DetectionResult] = None
         hit: Optional[DetectionResult] = None
+        nudity_result: Optional[DetectionResult] = None
         timings = [f"capture={capture_ms:.0f}ms"]
         for det in self.detectors:
             if getattr(det, "name", "") == "anime_nsfw":
@@ -521,6 +555,10 @@ class Watcher:
             else:
                 res = det.scan(img)
             res = self._apply_anime_mode(res)
+            if res.detector == "anime_nsfw":
+                res = self._apply_illustrated_photo_guard(res, nudity_result=nudity_result)
+            elif res.detector == "nudity":
+                nudity_result = res
             timings.append(f"{getattr(det, 'name', '?')}={(time.monotonic() - det_started) * 1000.0:.0f}ms")
             _log.info(
                 "scan: detector=%s triggered=%s severity=%s conf=%.2f label=%s region=%s",
