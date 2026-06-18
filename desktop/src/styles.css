@@ -497,6 +497,18 @@ button {
   border-color: var(--amber-line);
 }
 
+.pill-action.danger {
+  gap: 7px;
+  color: var(--coral);
+  background: var(--coral-soft);
+  border-color: var(--coral-line);
+}
+
+.pill-action.danger:hover {
+  color: var(--fg-1);
+  background: rgba(226, 121, 107, 0.22);
+}
+
 .stepper-control {
   display: inline-flex;
   align-items: center;
@@ -641,6 +653,13 @@ button {
   color: var(--fg-3);
   border-bottom: 1px solid var(--border-faint);
   font-size: 12px;
+}
+
+.log-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .log-list {

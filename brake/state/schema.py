@@ -28,6 +28,7 @@ LOCKOUT_DURATION_DEFAULT = 15
 RECOVERY_COOLDOWN_MIN = 1
 RECOVERY_COOLDOWN_MAX = 60
 RECOVERY_UNLOCK_DELAY_DEFAULT = 15
+LOCKOUT_RECOVERY_ENABLED_DEFAULT = True
 LOCKOUT_RECOVERY_DELAY_DEFAULT = 15
 
 DETECTION_SENSITIVITY_DEFAULT = "balanced"
@@ -66,7 +67,7 @@ class State:
     anime_detection_mode: str = ANIME_DETECTION_MODE_DEFAULT
     recovery_unlock_after: Optional[str] = None
     recovery_unlock_delay_minutes: int = RECOVERY_UNLOCK_DELAY_DEFAULT
-    lockout_recovery_enabled: bool = False
+    lockout_recovery_enabled: bool = LOCKOUT_RECOVERY_ENABLED_DEFAULT
     lockout_recovery_delay_minutes: int = LOCKOUT_RECOVERY_DELAY_DEFAULT
     shutdown_after_lockout: bool = True
     created_at: str = field(default_factory=_now_iso)
@@ -226,7 +227,9 @@ class State:
                 recovery_unlock_delay_minutes=int(
                     d.get("recovery_unlock_delay_minutes", RECOVERY_UNLOCK_DELAY_DEFAULT)
                 ),
-                lockout_recovery_enabled=bool(d.get("lockout_recovery_enabled", False)),
+                lockout_recovery_enabled=bool(
+                    d.get("lockout_recovery_enabled", LOCKOUT_RECOVERY_ENABLED_DEFAULT)
+                ),
                 lockout_recovery_delay_minutes=int(
                     d.get("lockout_recovery_delay_minutes", LOCKOUT_RECOVERY_DELAY_DEFAULT)
                 ),
@@ -252,7 +255,7 @@ class State:
             recovery_unlock_delay_minutes=int(
                 d.get("recovery_unlock_delay_minutes", RECOVERY_UNLOCK_DELAY_DEFAULT)
             ),
-            lockout_recovery_enabled=bool(d.get("lockout_recovery_enabled", False)),
+            lockout_recovery_enabled=bool(d.get("lockout_recovery_enabled", LOCKOUT_RECOVERY_ENABLED_DEFAULT)),
             lockout_recovery_delay_minutes=int(
                 d.get("lockout_recovery_delay_minutes", LOCKOUT_RECOVERY_DELAY_DEFAULT)
             ),

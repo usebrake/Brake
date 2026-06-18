@@ -74,6 +74,14 @@ def list_detection_events(limit: int = DEFAULT_EVENT_LIMIT) -> List[Dict[str, An
     return events
 
 
+def clear_detection_events() -> None:
+    path = paths.detection_events_file()
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 def _normalize_event(raw: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "ts": str(raw.get("ts", "")),

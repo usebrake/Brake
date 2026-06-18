@@ -13,6 +13,7 @@ import {
   ScrollText,
   ShieldCheck,
   ShieldOff,
+  Trash2,
   X
 } from "lucide-react";
 import React from "react";
@@ -32,7 +33,7 @@ const fallbackStatus = {
   recoveryUnlockAfter: null,
   recoveryUnlockPending: false,
   recoveryUnlockDelayMinutes: 15,
-  lockoutRecoveryEnabled: false,
+  lockoutRecoveryEnabled: true,
   lockoutRecoveryDelayMinutes: 15,
   shutdownAfterLockout: true
 };
@@ -140,12 +141,18 @@ function confidenceCopy(confidence) {
   return `${Math.round(value * 100)}%`;
 }
 
-function DetectionLogs({ events, loading, onRefresh }) {
+function DetectionLogs({ events, loading, onRefresh, onClear }) {
   return (
     <Card icon={ScrollText} title="Detection events" subtitle="Only meaningful detector hits are shown here. Clean scans are not logged.">
       <div className="log-toolbar">
         <span>{events.length ? `${events.length} recent ${events.length === 1 ? "event" : "events"}` : loading ? "Loading..." : "No detection events yet"}</span>
-        <button className="pill-action" onClick={onRefresh}>Refresh</button>
+        <div className="log-actions">
+          <button className="pill-action" onClick={onRefresh}>Refresh</button>
+          <button className="pill-action danger" onClick={onClear} disabled={loading || !events.length}>
+            <Trash2 size={14} strokeWidth={2.2} />
+            <span>Clear</span>
+          </button>
+        </div>
       </div>
       {events.length ? (
         <div className="log-list">
@@ -707,6 +714,18 @@ export default function App() {
     });
   };
 
+  const clearDetectionLogs = () => {
+    setLogsLoading(true);
+    window.brake?.clearDetectionLogs?.().then((response) => {
+      setLogsLoading(false);
+      if (response?.ok) {
+        setDetectionEvents([]);
+      } else {
+        setNotice(humanError(response?.error || "Detection logs could not be cleared."));
+      }
+    });
+  };
+
   useEffect(() => {
     let alive = true;
     const refresh = () => {
@@ -749,7 +768,7 @@ export default function App() {
   const protectedTone = status.failSecure ? "amber" : status.commitmentActive ? "amber" : status.enabled ? "teal" : "gold";
   const recoverySnapshot = (source) => ({
     recoveryUnlockDelayMinutes: clampRecoveryMinutes(source?.recoveryUnlockDelayMinutes),
-    lockoutRecoveryEnabled: Boolean(source?.lockoutRecoveryEnabled),
+    lockoutRecoveryEnabled: Boolean(source?.lockoutRecoveryEnabled ?? fallbackStatus.lockoutRecoveryEnabled),
     lockoutRecoveryDelayMinutes: clampRecoveryMinutes(source?.lockoutRecoveryDelayMinutes)
   });
   const mergeBackendStatus = (data) => {
@@ -1285,7 +1304,12 @@ export default function App() {
               <p>Recent detector hits only. Clean scans are intentionally hidden.</p>
               {notice ? <p className="notice">{notice}</p> : null}
             </div>
-            <DetectionLogs events={detectionEvents} loading={logsLoading} onRefresh={refreshDetectionLogs} />
+            <DetectionLogs
+              events={detectionEvents}
+              loading={logsLoading}
+              onRefresh={refreshDetectionLogs}
+              onClear={clearDetectionLogs}
+            />
           </>
         ) : (
           <>

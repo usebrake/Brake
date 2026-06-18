@@ -281,6 +281,9 @@ app.whenReady().then(async () => {
   ipcMain.handle("brake:detection-logs", async () => (
     queuedBackend("detection-logs", ["--limit", "100"])
   ));
+  ipcMain.handle("brake:clear-detection-logs", async () => (
+    queuedBackend("clear-detection-logs")
+  ));
   ipcMain.handle("brake:set-commitment", async (_event, payload) => (
     queuedBackend("set-commitment", [
       "--until", String(payload?.until || ""),

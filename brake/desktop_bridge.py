@@ -13,7 +13,7 @@ import subprocess
 import sys
 from typing import Any
 
-from brake.detection_events import list_detection_events
+from brake.detection_events import clear_detection_events, list_detection_events
 from brake.detectors.anime_nsfw import anime_model_status, download_model, model_dir
 from brake.gui.controller import Controller
 from brake.lockout.recovery import spawn_resume_lockout_if_needed
@@ -57,7 +57,7 @@ def _status_payload(controller: Controller) -> dict[str, Any]:
         "recoveryUnlockAfter": status.get("recovery_unlock_after"),
         "recoveryUnlockPending": bool(status.get("recovery_unlock_pending", False)),
         "recoveryUnlockDelayMinutes": int(status.get("recovery_unlock_delay_minutes", 15) or 15),
-        "lockoutRecoveryEnabled": bool(status.get("lockout_recovery_enabled", False)),
+        "lockoutRecoveryEnabled": bool(status.get("lockout_recovery_enabled", True)),
         "lockoutRecoveryDelayMinutes": int(status.get("lockout_recovery_delay_minutes", 15) or 15),
         "shutdownAfterLockout": bool(status.get("shutdown_after_lockout", True)),
     }
@@ -119,6 +119,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("anime-download")
     logs = sub.add_parser("detection-logs")
     logs.add_argument("--limit", type=int, default=100)
+    sub.add_parser("clear-detection-logs")
 
     set_commitment = sub.add_parser("set-commitment")
     set_commitment.add_argument("--until", required=True)
@@ -201,6 +202,9 @@ def main(argv: list[str] | None = None) -> int:
             })
         elif args.cmd == "detection-logs":
             payload = _ok({"events": list_detection_events(int(args.limit))})
+        elif args.cmd == "clear-detection-logs":
+            clear_detection_events()
+            payload = _ok({"events": []})
         elif args.cmd == "set-commitment":
             ok, err = controller.set_commitment(str(args.until), str(args.password))
             payload = _ok(_status_payload(controller)) if ok else _error(err)

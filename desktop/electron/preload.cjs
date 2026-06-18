@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld("brake", {
   animeStatus: () => ipcRenderer.invoke("brake:anime-status"),
   downloadAnime: () => ipcRenderer.invoke("brake:anime-download"),
   detectionLogs: () => ipcRenderer.invoke("brake:detection-logs"),
+  clearDetectionLogs: () => ipcRenderer.invoke("brake:clear-detection-logs"),
   setCommitment: (payload) => ipcRenderer.invoke("brake:set-commitment", payload),
   testLockout: () => ipcRenderer.invoke("brake:test-lockout"),
   minimize: () => ipcRenderer.send("window:minimize"),

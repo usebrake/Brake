@@ -16,14 +16,14 @@ def _fresh(tmp: Path):
     for name in list(importlib.sys.modules):
         if name.startswith("brake.") or name == "brake":
             importlib.sys.modules.pop(name, None)
-    from brake.detection_events import append_detection_event, list_detection_events
+    from brake.detection_events import append_detection_event, clear_detection_events, list_detection_events
     from brake.detectors.base import DetectionResult
 
-    return append_detection_event, list_detection_events, DetectionResult
+    return append_detection_event, clear_detection_events, list_detection_events, DetectionResult
 
 
 def test_detection_events_store_only_meaningful_hits(tmp_path: Path) -> None:
-    append_event, list_events, DetectionResult = _fresh(tmp_path)
+    append_event, _, list_events, DetectionResult = _fresh(tmp_path)
 
     append_event(DetectionResult.negative("nudity"), action="observed")
     append_event(
@@ -49,7 +49,7 @@ def test_detection_events_store_only_meaningful_hits(tmp_path: Path) -> None:
 
 
 def test_detection_events_limit_and_order(tmp_path: Path) -> None:
-    append_event, list_events, DetectionResult = _fresh(tmp_path)
+    append_event, _, list_events, DetectionResult = _fresh(tmp_path)
 
     for i in range(5):
         append_event(
@@ -71,12 +71,36 @@ def test_detection_events_limit_and_order(tmp_path: Path) -> None:
     print("  [ok] detection events limit and newest-first order")
 
 
+def test_detection_events_can_be_cleared(tmp_path: Path) -> None:
+    append_event, clear_events, list_events, DetectionResult = _fresh(tmp_path)
+
+    append_event(
+        DetectionResult(
+            detector="nudity",
+            triggered=True,
+            confidence=0.91,
+            label="EXPLICIT NUDITY",
+            severity="hard",
+            region="full",
+        ),
+        action="lockout",
+    )
+
+    assert len(list_events()) == 1
+    clear_events()
+    assert list_events() == []
+    clear_events()
+    assert list_events() == []
+    print("  [ok] detection events can be cleared")
+
+
 def main() -> int:
     import tempfile
 
     tests = [
         test_detection_events_store_only_meaningful_hits,
         test_detection_events_limit_and_order,
+        test_detection_events_can_be_cleared,
     ]
     for fn in tests:
         print(f"\n{fn.__name__}")
