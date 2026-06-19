@@ -48,10 +48,93 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\installer\register_service.ps1"" -NoPrompt"; StatusMsg: "Installing Brake services..."; Flags: runhidden waituntilterminated
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch Brake"; Flags: nowait postinstall skipifsilent
 
-[UninstallRun]
-Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\installer\unregister_service.ps1"""; Flags: runhidden waituntilterminated; RunOnceId: "RemoveBrakeServices"
-
 [Code]
+function RunUninstallGuard(): Boolean;
+var
+  ResultCode: Integer;
+  GuardExe: String;
+begin
+  GuardExe := ExpandConstant('{app}\BrakeUninstallGuard.exe');
+  if not FileExists(GuardExe) then
+  begin
+    MsgBox(
+      'Brake cannot uninstall because the uninstall guard is missing. Reinstall Brake, turn protection off, then uninstall again.',
+      mbError,
+      MB_OK
+    );
+    Result := False;
+    exit;
+  end;
+
+  if not Exec(GuardExe, '', '', SW_SHOW, ewWaitUntilTerminated, ResultCode) then
+  begin
+    MsgBox('Brake could not start the uninstall guard. Reinstall Brake and try again.', mbError, MB_OK);
+    Result := False;
+    exit;
+  end;
+
+  Result := ResultCode = 0;
+end;
+
+function RunUninstallCleanup(): Boolean;
+var
+  ResultCode: Integer;
+  CleanupScript: String;
+begin
+  CleanupScript := ExpandConstant('{app}\installer\unregister_service.ps1');
+  if not FileExists(CleanupScript) then
+  begin
+    MsgBox(
+      'Brake cannot uninstall because the cleanup script is missing. Reinstall Brake, turn protection off, then uninstall again.',
+      mbError,
+      MB_OK
+    );
+    Result := False;
+    exit;
+  end;
+
+  if not Exec(
+    ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+    '-NoProfile -ExecutionPolicy Bypass -File "' + CleanupScript + '" -NoAppFolderCleanup',
+    '',
+    SW_HIDE,
+    ewWaitUntilTerminated,
+    ResultCode
+  ) then
+  begin
+    MsgBox('Brake could not start uninstall cleanup. App files were not removed.', mbError, MB_OK);
+    Result := False;
+    exit;
+  end;
+
+  if ResultCode <> 0 then
+  begin
+    MsgBox(
+      'Brake cleanup did not finish cleanly. App files were not removed. Restart Windows, then try uninstall again.',
+      mbError,
+      MB_OK
+    );
+    Result := False;
+    exit;
+  end;
+
+  Result := True;
+end;
+
+function InitializeUninstall(): Boolean;
+begin
+  Result := RunUninstallGuard();
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if CurUninstallStep = usUninstall then
+  begin
+    if not RunUninstallCleanup() then
+      Abort;
+  end;
+end;
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   ResultCode: Integer;

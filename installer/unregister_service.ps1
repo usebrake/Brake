@@ -1,9 +1,10 @@
+param(
+    [switch]$NoAppFolderCleanup
+)
+
 # Fully remove Brake services, user-session processes, shortcuts, and local
-# security state. Must be elevated.
-#
-# Important: Windows uninstall is authoritative. It must work even when
-# protection or Commitment Mode is active, otherwise an uninstall can half-run
-# and leave services/watchdogs alive without a complete app folder.
+# security state. Must be elevated. Protection/commitment policy is enforced
+# by BrakeUninstallGuard before this cleanup runs from the Windows uninstaller.
 $ErrorActionPreference = "Continue"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -97,6 +98,15 @@ function Delete-ServiceIfPresent($svcName) {
 
     Write-Host "Deleting $svcName..."
     Invoke-Sc @("delete", $svcName) | Out-Null
+}
+
+function Wait-ServiceDeleted($svcName, [int]$seconds = 10) {
+    for ($i = 0; $i -lt ($seconds * 4); $i++) {
+        Invoke-Sc @("query", $svcName) | Out-Null
+        if ($LASTEXITCODE -ne 0) { return $true }
+        Start-Sleep -Milliseconds 250
+    }
+    return $false
 }
 
 function Stop-AgentFromPidFile {
@@ -199,6 +209,7 @@ function Remove-LocalData {
 }
 
 Write-Host "Disabling Brake service restart..."
+$uninstallComplete = $true
 foreach ($svc in $serviceNames) {
     Disable-ServiceRestart $svc
 }
@@ -222,6 +233,13 @@ foreach ($svc in $serviceNames) {
     Delete-ServiceIfPresent $svc
 }
 
+foreach ($svc in $serviceNames) {
+    if (-not (Wait-ServiceDeleted $svc 15)) {
+        Write-Warning "$svc is still registered after delete."
+        $uninstallComplete = $false
+    }
+}
+
 Write-Host "Removing login recovery autostart..."
 Remove-ItemProperty `
     -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" `
@@ -240,7 +258,6 @@ foreach ($shortcut in $shortcutPaths) {
 }
 
 Write-Host "Removing Brake local data..."
-$uninstallComplete = $true
 if (-not (Remove-LocalData)) {
     Write-Warning "Could not fully remove $dataDir because a file is still in use."
     $uninstallComplete = $false
@@ -279,7 +296,9 @@ if (-not $uninstallComplete) {
 
 Write-Host "Brake services, processes, shortcuts, and local data removed."
 
-if (Same-Path $repoRoot $installRoot) {
+if ($NoAppFolderCleanup) {
+    Write-Host "Installed app folder will be removed by the Windows uninstaller."
+} elseif (Same-Path $repoRoot $installRoot) {
     Write-Host "Scheduling installed app folder removal: $repoRoot"
     $cleanup = @"
 Start-Sleep -Seconds 3

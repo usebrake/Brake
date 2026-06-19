@@ -35,48 +35,30 @@ def test_disabled_without_commitment_allows_uninstall(tmp: Path) -> None:
     print("  [ok] disabled protection without commitment allows uninstall")
 
 
-def test_enabled_without_commitment_rejects_wrong_password(tmp: Path) -> None:
+def test_enabled_without_commitment_blocks_uninstall(tmp: Path) -> None:
     uninstall_guard, State, StateStore, crypto = _fresh(tmp)
     state = State(password_hash=crypto.hash_password("pw"), enabled=True)
     StateStore().save(state)
 
-    uninstall_guard._prompt_dialog = lambda _prompt: "wrong"
     uninstall_guard._block_with_dialog = lambda _message: None
-    uninstall_guard.is_backdoor = lambda _typed: False
 
     assert uninstall_guard.main() == 1
-    print("  [ok] enabled protection rejects wrong password")
+    print("  [ok] enabled protection blocks uninstall")
 
 
-def test_enabled_without_commitment_accepts_password(tmp: Path) -> None:
+def test_enabled_without_commitment_does_not_accept_recovery_code(tmp: Path) -> None:
     uninstall_guard, State, StateStore, crypto = _fresh(tmp)
     state = State(password_hash=crypto.hash_password("pw"), enabled=True)
     StateStore().save(state)
 
-    uninstall_guard._prompt_dialog = lambda _prompt: "pw"
-    uninstall_guard.is_backdoor = lambda _typed: False
-
-    assert uninstall_guard.main() == 0
-    print("  [ok] enabled protection accepts password")
-
-
-def test_enabled_without_commitment_recovery_schedules_cooldown(tmp: Path) -> None:
-    uninstall_guard, State, StateStore, crypto = _fresh(tmp)
-    state = State(password_hash=crypto.hash_password("pw"), enabled=True)
-    StateStore().save(state)
-
-    uninstall_guard._prompt_dialog = lambda _prompt: "recovery-code"
     uninstall_guard._block_with_dialog = lambda _message: None
-    uninstall_guard.is_backdoor = lambda _typed: False
-    from brake.state.recovery import RecoveryStore
-    RecoveryStore.verify = lambda _self, typed: typed == "recovery-code"  # type: ignore[method-assign]
 
     assert uninstall_guard.main() == 1
     saved = StateStore().load()
     assert saved is not None
     assert saved.enabled is True
-    assert saved.recovery_unlock_after is not None
-    print("  [ok] enabled protection recovery schedules cooldown before uninstall")
+    assert saved.recovery_unlock_after is None
+    print("  [ok] enabled protection does not accept recovery inside uninstall")
 
 
 def test_active_commitment_rejects_normal_password(tmp: Path) -> None:
@@ -85,33 +67,27 @@ def test_active_commitment_rejects_normal_password(tmp: Path) -> None:
     state = State(password_hash=crypto.hash_password("pw"), enabled=True, committed_until=future)
     StateStore().save(state)
 
-    uninstall_guard._prompt_dialog = lambda _prompt: "pw"
     uninstall_guard._block_with_dialog = lambda _message: None
-    uninstall_guard.is_backdoor = lambda _typed: False
 
     assert uninstall_guard.main() == 1
     print("  [ok] active commitment rejects normal password")
 
 
-def test_active_commitment_recovery_schedules_cooldown(tmp: Path) -> None:
+def test_active_commitment_does_not_accept_recovery_code(tmp: Path) -> None:
     uninstall_guard, State, StateStore, crypto = _fresh(tmp)
     future = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(timespec="seconds")
     state = State(password_hash=crypto.hash_password("pw"), enabled=True, committed_until=future)
     StateStore().save(state)
 
-    uninstall_guard._prompt_dialog = lambda _prompt: "recovery-code"
     uninstall_guard._block_with_dialog = lambda _message: None
-    uninstall_guard.is_backdoor = lambda _typed: False
-    from brake.state.recovery import RecoveryStore
-    RecoveryStore.verify = lambda _self, typed: typed == "recovery-code"  # type: ignore[method-assign]
 
     assert uninstall_guard.main() == 1
     saved = StateStore().load()
     assert saved is not None
     assert saved.enabled is True
     assert saved.commitment_active()
-    assert saved.recovery_unlock_after is not None
-    print("  [ok] active commitment recovery schedules cooldown before uninstall")
+    assert saved.recovery_unlock_after is None
+    print("  [ok] active commitment does not accept recovery inside uninstall")
 
 
 def main() -> int:
@@ -121,11 +97,10 @@ def main() -> int:
         for fn in (
             test_no_state_allows_uninstall,
             test_disabled_without_commitment_allows_uninstall,
-            test_enabled_without_commitment_rejects_wrong_password,
-            test_enabled_without_commitment_accepts_password,
-            test_enabled_without_commitment_recovery_schedules_cooldown,
+            test_enabled_without_commitment_blocks_uninstall,
+            test_enabled_without_commitment_does_not_accept_recovery_code,
             test_active_commitment_rejects_normal_password,
-            test_active_commitment_recovery_schedules_cooldown,
+            test_active_commitment_does_not_accept_recovery_code,
         ):
             sub = tmp / fn.__name__
             sub.mkdir()

@@ -1460,6 +1460,7 @@ function humanError(error) {
     not_initialized: "Brake has not been set up yet.",
     password_required: "Enter your password to make this less strict.",
     permission_denied: "Brake could not write settings. Restart Brake or run the latest BrakeSetup.exe again.",
+    backend_missing_reinstall: "Brake is not fully installed. Reinstall Brake, then open it again.",
     service_unavailable: "Brake could not reach the background service. Restart Brake or run the latest BrakeSetup.exe again.",
     state_untrusted: "Brake could not verify its settings. Use your recovery code to repair protection.",
     anime_model_not_ready: "Download the illustrated detector before turning it on.",

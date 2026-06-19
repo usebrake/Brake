@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage } = require("electron");
 const { execFile, spawn } = require("node:child_process");
+const fs = require("node:fs");
 const path = require("node:path");
 
 const isSourceInstalled = process.env.BRAKE_INSTALLED_SOURCE === "1";
@@ -59,6 +60,17 @@ function backend(command, args = [], timeoutMs = 5000) {
   const exeArgs = app.isPackaged
     ? [command, ...args]
     : ["-m", "brake.desktop_bridge", command, ...args];
+
+  if (app.isPackaged && !fs.existsSync(bridgeExe)) {
+    setTimeout(() => {
+      isQuitting = true;
+      app.quit();
+    }, 100);
+    return Promise.resolve({
+      ok: false,
+      error: "backend_missing_reinstall"
+    });
+  }
 
   return new Promise((resolve) => {
     execFile(
