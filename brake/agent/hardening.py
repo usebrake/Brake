@@ -1,4 +1,4 @@
-"""Close Task Manager / appwiz / timedate windows while protection is enabled.
+"""Close direct service/process bypass tools while protection is enabled.
 
 Runs in the user session (the only session where it has visibility of user
 windows). Matches by case-insensitive title substring; PostMessage WM_CLOSE
@@ -30,17 +30,9 @@ DEFAULT_BLOCK_TITLES: List[str] = [
     "Registry Editor",
     "Group Policy",             # gpedit.msc
     "Local Security Policy",    # secpol.msc
-    # Install/uninstall paths
-    "Programs and Features",
-    "Apps & features",
-    "Installed apps",           # newer Windows 11 wording
-    "Add or remove programs",
-    "Brake Uninstall",
-    "Brake Uninstall",
     # Less obvious bypasses
     "Date and time",
     "Date & time",
-    "Control Panel",            # parent for several of the above
 ]
 
 WM_CLOSE = 0x0010

@@ -25,7 +25,6 @@ logging:
 
 hardening:
   block_taskmgr: true
-  block_appwiz: true
   block_timedate: true
   # 500ms halves the timer wakeup rate vs 250ms; blocked windows still close
   # within half a second.

@@ -36,7 +36,6 @@ class LoggingConfig:
 @dataclass
 class HardeningConfig:
     block_taskmgr: bool = True
-    block_appwiz: bool = True
     block_timedate: bool = True
     # 500ms keeps blocked windows closing fast while halving the wakeup rate
     # (frequent timer wakeups are a real battery cost on laptops).
@@ -65,10 +64,14 @@ def _settings_path() -> Path:
 def load_settings() -> Settings:
     path = _settings_path()
     raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    hardening_raw = raw.get("hardening") or {}
+    hardening_fields = set(HardeningConfig.__dataclass_fields__)
     return Settings(
         scan_interval_seconds=int(raw.get("scan_interval_seconds", 15)),
         lockout_duration_seconds=int(raw.get("lockout_duration_seconds", 900)),
         nudity=NudityConfig(**(raw.get("nudity") or {})),
         logging=LoggingConfig(**(raw.get("logging") or {})),
-        hardening=HardeningConfig(**(raw.get("hardening") or {})),
+        hardening=HardeningConfig(
+            **{k: v for k, v in hardening_raw.items() if k in hardening_fields}
+        ),
     )

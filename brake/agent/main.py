@@ -2,7 +2,7 @@
 
 Owns:
   - the screen-capture watcher loop (NudeNet + anime NSFW)
-  - the hardening loop (closes Task Manager / timedate / appwiz while protected)
+  - the hardening loop (closes direct service/process bypass tools while protected)
   - the agent.pid file (so the service supervisor knows we're alive)
 
 Spawned by:
