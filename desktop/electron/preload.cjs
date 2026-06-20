@@ -21,6 +21,8 @@ contextBridge.exposeInMainWorld("brake", {
   clearDetectionLogs: () => ipcRenderer.invoke("brake:clear-detection-logs"),
   setCommitment: (payload) => ipcRenderer.invoke("brake:set-commitment", payload),
   testLockout: () => ipcRenderer.invoke("brake:test-lockout"),
+  openFeedbackIssue: () => ipcRenderer.invoke("brake:feedback-issue"),
+  openFeedbackEmail: () => ipcRenderer.invoke("brake:feedback-email"),
   minimize: () => ipcRenderer.send("window:minimize"),
   toggleMaximize: () => ipcRenderer.send("window:toggle-maximize"),
   close: () => ipcRenderer.send("window:close")

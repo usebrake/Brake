@@ -789,6 +789,15 @@ button {
   background: var(--gold-bright);
 }
 
+.btn.safe {
+  color: #031a17;
+  background: var(--teal);
+}
+
+.btn.safe:hover {
+  background: #7cf3df;
+}
+
 .btn.warning {
   color: var(--amber);
   background: transparent;
@@ -824,6 +833,23 @@ button {
   justify-self: start;
   padding: 0;
   font-size: 12px;
+}
+
+.feedback-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.feedback-panel p {
+  margin: 0;
+  color: var(--fg-3);
+  line-height: 1.55;
+}
+
+.feedback-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .modal-scrim {

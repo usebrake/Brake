@@ -1,10 +1,13 @@
 import {
   Activity,
   Download,
+  Github,
   Info,
   Gauge,
   KeyRound,
+  Mail,
   Maximize,
+  MessageCircle,
   Minus,
   Plus,
   Power,
@@ -651,6 +654,31 @@ function GuideModal({ tab, status, onClose }) {
   );
 }
 
+function FeedbackModal({ onClose }) {
+  const openIssue = () => {
+    window.brake?.openFeedbackIssue?.();
+  };
+  const openEmail = () => {
+    window.brake?.openFeedbackEmail?.();
+  };
+
+  return (
+    <Modal title="Send feedback" onClose={onClose}>
+      <div className="feedback-panel">
+        <p>Brake will open your browser or email app. Nothing is sent from Brake automatically.</p>
+        <div className="feedback-actions">
+          <Button variant="safe" icon={Github} onClick={openIssue}>
+            Report an issue
+          </Button>
+          <Button variant="secondary" icon={Mail} onClick={openEmail}>
+            Email feedback
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function WindowChrome() {
   return (
     <div className="window-chrome">
@@ -674,6 +702,7 @@ export default function App() {
   const [tab, setTab] = useState("overview");
   const [status, setStatus] = useState(fallbackStatus);
   const [showInfo, setShowInfo] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
   const [notice, setNotice] = useState("");
   const [passwordPrompt, setPasswordPrompt] = useState(null);
   const [resetPasswordPrompt, setResetPasswordPrompt] = useState(null);
@@ -1372,11 +1401,18 @@ export default function App() {
           {status.commitmentActive ? "Extend commitment" : "Lock in commitment"}
         </Button>
         <div className="spacer" />
+        <Button variant="safe" icon={MessageCircle} onClick={() => setShowFeedback(true)}>
+          Send feedback
+        </Button>
         <button className="link-button" onClick={() => setShowInfo(true)}>How this works</button>
       </footer>
 
       {showInfo ? (
         <GuideModal tab={tab} status={status} onClose={() => setShowInfo(false)} />
+      ) : null}
+
+      {showFeedback ? (
+        <FeedbackModal onClose={() => setShowFeedback(false)} />
       ) : null}
 
       {passwordPrompt ? (

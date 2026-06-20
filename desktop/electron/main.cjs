@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage } = require("electron");
+const { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, shell } = require("electron");
 const { execFile, spawn } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -15,6 +15,9 @@ let mainWindow = null;
 let tray = null;
 let devAgent = null;
 let isQuitting = false;
+
+const feedbackIssueUrl = "https://github.com/usebrake/Brake/issues";
+const feedbackEmailUrl = "mailto:hello.usebrake@gmail.com?subject=Brake%20beta%20feedback";
 
 app.setName("Brake");
 
@@ -206,6 +209,13 @@ function createTray() {
   tray.setToolTip("Brake");
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: "Show Brake", click: showWindow },
+    {
+      label: "Send feedback",
+      submenu: [
+        { label: "Report an issue", click: () => openFeedbackLink("issue") },
+        { label: "Email feedback", click: () => openFeedbackLink("email") }
+      ]
+    },
     { type: "separator" },
     {
       label: "Quit Brake",
@@ -216,6 +226,14 @@ function createTray() {
     }
   ]));
   tray.on("double-click", showWindow);
+}
+
+function openFeedbackLink(kind) {
+  const url = kind === "issue" ? feedbackIssueUrl : kind === "email" ? feedbackEmailUrl : "";
+  if (!url) return Promise.resolve({ ok: false, error: "bad_feedback_link" });
+  return shell.openExternal(url)
+    .then(() => ({ ok: true }))
+    .catch((error) => ({ ok: false, error: error?.message || "feedback_open_failed" }));
 }
 
 app.whenReady().then(async () => {
@@ -305,6 +323,8 @@ app.whenReady().then(async () => {
   ipcMain.handle("brake:test-lockout", async () => (
     queuedBackend("test-lockout", ["--seconds", "10"])
   ));
+  ipcMain.handle("brake:feedback-issue", async () => openFeedbackLink("issue"));
+  ipcMain.handle("brake:feedback-email", async () => openFeedbackLink("email"));
 
   ipcMain.on("window:minimize", (event) => {
     BrowserWindow.fromWebContents(event.sender)?.minimize();
