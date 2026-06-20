@@ -36,8 +36,8 @@ const fallbackStatus = {
   recoveryUnlockPending: false,
   recoveryUnlockDelayMinutes: 15,
   lockoutRecoveryEnabled: true,
-  lockoutRecoveryDelayMinutes: 15,
-  shutdownAfterLockout: true
+  lockoutRecoveryDelayMinutes: 5,
+  shutdownAfterLockout: false
 };
 const MIN_PASSWORD_LENGTH = 6;
 const INCREASE_CONFIRM_GRACE_MS = 45000;
@@ -189,7 +189,7 @@ function DetectionLogs({ events, loading, onRefresh, onClear }) {
   );
 }
 
-function StatusPanel({ status, now, onToggleProtection }) {
+function StatusPanel({ status, now, onToggleProtection, onCancelRecoveryUnlock }) {
   const committed = status.commitmentActive;
   const failSecure = status.failSecure;
   const enabled = status.enabled || failSecure;
@@ -212,9 +212,9 @@ function StatusPanel({ status, now, onToggleProtection }) {
       <button
         className="status-orb"
         type="button"
-        aria-label={failSecure ? "Repair protection" : enabled ? "Turn off protection" : "Turn on protection"}
-        title={failSecure ? "Repair protection" : enabled ? "Turn off protection" : "Turn on protection"}
-        onClick={onToggleProtection}
+        aria-label={recoveryLeft ? "Cancel emergency unlock cooldown" : failSecure ? "Repair protection" : enabled ? "Turn off protection" : "Turn on protection"}
+        title={recoveryLeft ? "Cancel emergency unlock cooldown" : failSecure ? "Repair protection" : enabled ? "Turn off protection" : "Turn on protection"}
+        onClick={recoveryLeft ? onCancelRecoveryUnlock : onToggleProtection}
       >
         {enabled || committed ? (
           <ShieldCheck size={44} strokeWidth={1.8} />
@@ -665,6 +665,7 @@ function FeedbackModal({ onClose }) {
   return (
     <Modal title="Send feedback" onClose={onClose}>
       <div className="feedback-panel">
+        <p><strong>False positives are rare, but they can happen.</strong> If Brake locks you out incorrectly, send feedback with what was on screen so it can be fixed and updated as quickly as possible.</p>
         <p>Brake will open your browser or email app. Nothing is sent from Brake automatically.</p>
         <div className="feedback-actions">
           <Button variant="safe" icon={Github} onClick={openIssue}>
@@ -849,6 +850,23 @@ export default function App() {
       return;
     }
     setPasswordPrompt({ mode: status.enabled ? "disable" : "enable", error: "" });
+  };
+  const requestCancelRecoveryUnlock = () => {
+    if (!status.recoveryUnlockPending) return;
+    setConfirmPrompt({
+      title: "Cancel emergency unlock?",
+      body: "Brake will keep protection and your commitment active. This only cancels the pending overview cooldown.",
+      warning: "",
+      confirmLabel: "Cancel cooldown",
+      onConfirm: () => {
+        setConfirmPrompt(null);
+        window.brake?.cancelRecoveryUnlock?.().then((response) => {
+          if (applyBackendResponse(response)) {
+            setNotice("Emergency unlock canceled.");
+          }
+        });
+      }
+    });
   };
   const submitProtectionPassword = (password, localError = "") => {
     const mode = passwordPrompt?.mode;
@@ -1235,7 +1253,12 @@ export default function App() {
               <h1>Overview</h1>
               {notice ? <p className="notice">{notice}</p> : null}
             </div>
-            <StatusPanel status={status} now={now} onToggleProtection={toggleProtection} />
+            <StatusPanel
+              status={status}
+              now={now}
+              onToggleProtection={toggleProtection}
+              onCancelRecoveryUnlock={requestCancelRecoveryUnlock}
+            />
             <div className="overview-single">
               <section className="overview-controls" aria-label="Overview controls">
                 <SettingRow

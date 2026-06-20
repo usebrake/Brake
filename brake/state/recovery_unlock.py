@@ -38,6 +38,17 @@ def schedule_recovery_unlock(
     return state.recovery_unlock_after
 
 
+def cancel_recovery_unlock(store: StateStore, state: Optional[State] = None) -> Optional[State]:
+    """Cancel a pending overview emergency unlock cooldown."""
+    s = state if state is not None else store.load()
+    if s is None:
+        return None
+    if s.recovery_unlock_after:
+        s.recovery_unlock_after = None
+        store.save(s)
+    return s
+
+
 def apply_due_recovery_unlock(store: StateStore, state: Optional[State] = None) -> Optional[State]:
     """Apply a matured emergency unlock, if one exists."""
     s = state if state is not None else store.load()

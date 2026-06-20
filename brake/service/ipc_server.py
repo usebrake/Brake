@@ -16,12 +16,15 @@ from brake.ipc.protocol import Command, PIPE_NAME, decode, encode
 from brake.state import State, StateMissingError, StateStore, StateTamperedError
 from brake.state.crypto import MIN_PASSWORD_LENGTH, hash_password, is_backdoor, verify_password
 from brake.state.recovery import RecoveryStore, RecoveryTamperedError
-from brake.state.recovery_unlock import apply_due_recovery_unlock, schedule_recovery_unlock
+from brake.state.recovery_unlock import apply_due_recovery_unlock, cancel_recovery_unlock, schedule_recovery_unlock
 from brake.state.schema import (
     LOCKOUT_DURATION_MAX,
     LOCKOUT_DURATION_MIN,
+    LOCKOUT_RECOVERY_ENABLED_DEFAULT,
+    LOCKOUT_RECOVERY_DELAY_DEFAULT,
     RECOVERY_COOLDOWN_MAX,
     RECOVERY_COOLDOWN_MIN,
+    SHUTDOWN_AFTER_LOCKOUT_DEFAULT,
 )
 
 _log = logging.getLogger(__name__)
@@ -180,13 +183,15 @@ class IPCServer(threading.Thread):
             if cmd == Command.SET_RECOVERY_SETTINGS.value:
                 return self._cmd_set_recovery_settings(
                     int(req.get("recovery_unlock_delay_minutes", 15)),
-                    bool(req.get("lockout_recovery_enabled", False)),
-                    int(req.get("lockout_recovery_delay_minutes", 15)),
+                    bool(req.get("lockout_recovery_enabled", LOCKOUT_RECOVERY_ENABLED_DEFAULT)),
+                    int(req.get("lockout_recovery_delay_minutes", LOCKOUT_RECOVERY_DELAY_DEFAULT)),
                     str(req.get("password", "") or ""),
                 )
+            if cmd == Command.CANCEL_RECOVERY_UNLOCK.value:
+                return self._cmd_cancel_recovery_unlock()
             if cmd == Command.SET_SHUTDOWN_AFTER_LOCKOUT.value:
                 return self._cmd_set_shutdown_after_lockout(
-                    bool(req.get("enabled", True)),
+                    bool(req.get("enabled", SHUTDOWN_AFTER_LOCKOUT_DEFAULT)),
                     str(req.get("password", "") or ""),
                 )
             if cmd == Command.SET_COMMITMENT.value: return self._cmd_set_commitment(
@@ -226,9 +231,9 @@ class IPCServer(threading.Thread):
             "recovery_unlock_after": None,
             "recovery_unlock_pending": False,
             "recovery_unlock_delay_minutes": 15,
-            "lockout_recovery_enabled": False,
-            "lockout_recovery_delay_minutes": 15,
-            "shutdown_after_lockout": True,
+            "lockout_recovery_enabled": LOCKOUT_RECOVERY_ENABLED_DEFAULT,
+            "lockout_recovery_delay_minutes": LOCKOUT_RECOVERY_DELAY_DEFAULT,
+            "shutdown_after_lockout": SHUTDOWN_AFTER_LOCKOUT_DEFAULT,
         }
 
     def _cmd_status(self) -> Dict[str, Any]:
@@ -426,6 +431,13 @@ class IPCServer(threading.Thread):
         s.lockout_recovery_enabled = lockout_recovery_enabled
         s.lockout_recovery_delay_minutes = lockout_recovery_delay_minutes
         self.store.save(s)
+        return {"ok": True}
+
+    def _cmd_cancel_recovery_unlock(self) -> Dict[str, Any]:
+        s = self._state()
+        if s is None:
+            return {"ok": False, "error": "not_initialized"}
+        cancel_recovery_unlock(self.store, s)
         return {"ok": True}
 
     def _cmd_set_commitment(self, until: str, password: str) -> Dict[str, Any]:

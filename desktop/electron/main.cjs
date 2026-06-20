@@ -296,6 +296,9 @@ app.whenReady().then(async () => {
       "--password", String(payload?.password || "")
     ])
   ));
+  ipcMain.handle("brake:cancel-recovery-unlock", async () => (
+    queuedBackend("cancel-recovery-unlock")
+  ));
   ipcMain.handle("brake:set-shutdown-after-lockout", async (_event, payload) => (
     queuedBackend("set-shutdown-after-lockout", [
       "--enabled", payload?.enabled ? "true" : "false",

@@ -54,7 +54,8 @@ class _LockoutWindow(QWidget):
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.setSpacing(28)
 
-        if is_primary:
+        show_content = True
+        if show_content:
             # Pixel teal lock instead of the old red "Brake" text.
             # The visual is the brand — calm and unmistakable, not alarming.
             self.logo = QLabel()
@@ -262,7 +263,7 @@ class LockoutApp:
         def tick() -> None:
             remaining = self.countdown.remaining()
             for w in self.windows:
-                if w.is_primary:
+                if hasattr(w, "timer_lbl"):
                     w.timer_lbl.setText(Countdown.format_mmss(remaining))
             if self.countdown.is_done():
                 if self._blocker:

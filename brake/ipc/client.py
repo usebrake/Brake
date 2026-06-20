@@ -121,6 +121,9 @@ class IPCClient:
             password=password,
         )
 
+    def cancel_recovery_unlock(self) -> Dict[str, Any]:
+        return self.call(Command.CANCEL_RECOVERY_UNLOCK)
+
     def set_recovery_settings(
         self,
         recovery_unlock_delay_minutes: int,

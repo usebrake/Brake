@@ -29,7 +29,8 @@ RECOVERY_COOLDOWN_MIN = 1
 RECOVERY_COOLDOWN_MAX = 60
 RECOVERY_UNLOCK_DELAY_DEFAULT = 15
 LOCKOUT_RECOVERY_ENABLED_DEFAULT = True
-LOCKOUT_RECOVERY_DELAY_DEFAULT = 15
+LOCKOUT_RECOVERY_DELAY_DEFAULT = 5
+SHUTDOWN_AFTER_LOCKOUT_DEFAULT = False
 
 DETECTION_SENSITIVITY_DEFAULT = "balanced"
 
@@ -69,7 +70,7 @@ class State:
     recovery_unlock_delay_minutes: int = RECOVERY_UNLOCK_DELAY_DEFAULT
     lockout_recovery_enabled: bool = LOCKOUT_RECOVERY_ENABLED_DEFAULT
     lockout_recovery_delay_minutes: int = LOCKOUT_RECOVERY_DELAY_DEFAULT
-    shutdown_after_lockout: bool = True
+    shutdown_after_lockout: bool = SHUTDOWN_AFTER_LOCKOUT_DEFAULT
     created_at: str = field(default_factory=_now_iso)
     schema_version: int = SCHEMA_VERSION
 
@@ -233,7 +234,7 @@ class State:
                 lockout_recovery_delay_minutes=int(
                     d.get("lockout_recovery_delay_minutes", LOCKOUT_RECOVERY_DELAY_DEFAULT)
                 ),
-                shutdown_after_lockout=True,
+                shutdown_after_lockout=SHUTDOWN_AFTER_LOCKOUT_DEFAULT,
                 created_at=d.get("created_at", _now_iso()),
                 schema_version=SCHEMA_VERSION,
             )
@@ -259,7 +260,7 @@ class State:
             lockout_recovery_delay_minutes=int(
                 d.get("lockout_recovery_delay_minutes", LOCKOUT_RECOVERY_DELAY_DEFAULT)
             ),
-            shutdown_after_lockout=bool(d.get("shutdown_after_lockout", True)),
+            shutdown_after_lockout=bool(d.get("shutdown_after_lockout", SHUTDOWN_AFTER_LOCKOUT_DEFAULT)),
             created_at=d.get("created_at", _now_iso()),
             schema_version=version,
         )

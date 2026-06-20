@@ -27,7 +27,7 @@ from brake.service.scan_environment import ScanEnvironmentMonitor
 from brake.service.scan_pacer import FramePacer, SUSTAINED_SCAN_SECONDS
 from brake.state import StateStore, StateTamperedError
 from brake.state.recovery_unlock import apply_due_recovery_unlock
-from brake.state.schema import LOCKOUT_DURATION_DEFAULT
+from brake.state.schema import LOCKOUT_DURATION_DEFAULT, SHUTDOWN_AFTER_LOCKOUT_DEFAULT
 from brake.test_mode import is_test_mode, t
 
 _log = logging.getLogger(__name__)
@@ -234,7 +234,7 @@ class Watcher:
         s = self._current_state()
         if s is None:
             return True
-        return bool(getattr(s, "shutdown_after_lockout", True))
+        return bool(getattr(s, "shutdown_after_lockout", SHUTDOWN_AFTER_LOCKOUT_DEFAULT))
 
     def _active_lockout_remaining(self, now: float) -> float:
         """Return seconds the watcher should pause for an active lockout.

@@ -21,10 +21,13 @@ from brake.ipc.client import IPCClient, IPCError
 from brake.state import State, StateMissingError, StateStore, StateTamperedError
 from brake.state.crypto import MIN_PASSWORD_LENGTH, hash_password, is_backdoor, verify_password
 from brake.state.recovery import RecoveryStore, RecoveryTamperedError
-from brake.state.recovery_unlock import apply_due_recovery_unlock, schedule_recovery_unlock
+from brake.state.recovery_unlock import apply_due_recovery_unlock, cancel_recovery_unlock, schedule_recovery_unlock
 from brake.state.schema import (
+    LOCKOUT_RECOVERY_ENABLED_DEFAULT,
+    LOCKOUT_RECOVERY_DELAY_DEFAULT,
     RECOVERY_COOLDOWN_MAX,
     RECOVERY_COOLDOWN_MIN,
+    SHUTDOWN_AFTER_LOCKOUT_DEFAULT,
 )
 
 _log = logging.getLogger(__name__)
@@ -105,9 +108,9 @@ class Controller:
             "recovery_unlock_after": None,
             "recovery_unlock_pending": False,
             "recovery_unlock_delay_minutes": 15,
-            "lockout_recovery_enabled": False,
-            "lockout_recovery_delay_minutes": 15,
-            "shutdown_after_lockout": True,
+            "lockout_recovery_enabled": LOCKOUT_RECOVERY_ENABLED_DEFAULT,
+            "lockout_recovery_delay_minutes": LOCKOUT_RECOVERY_DELAY_DEFAULT,
+            "shutdown_after_lockout": SHUTDOWN_AFTER_LOCKOUT_DEFAULT,
         }
 
     @staticmethod
@@ -193,6 +196,22 @@ class Controller:
             return False, "wrong_password"
         s.enabled = False
         self.store.save(s)
+        return True, ""
+
+    def cancel_recovery_unlock(self) -> Tuple[bool, str]:
+        if self.service_up():
+            try:
+                r = self.ipc.cancel_recovery_unlock()
+                return bool(r.get("ok")), r.get("error", "")
+            except IPCError:
+                self._invalidate()
+        ok, err = self._direct_write_unavailable()
+        if not ok:
+            return False, err
+        s = self._load_state()
+        if s is None:
+            return False, "not_initialized"
+        cancel_recovery_unlock(self.store, s)
         return True, ""
 
     def reset_password_with_recovery(self, recovery_code: str, new_password: str) -> Tuple[bool, str]:

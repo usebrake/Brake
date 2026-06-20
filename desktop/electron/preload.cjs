@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld("brake", {
   setAnimeMode: (value) => ipcRenderer.invoke("brake:set-anime-mode", value),
   setAnimeModeWithPassword: (payload) => ipcRenderer.invoke("brake:set-anime-mode-with-password", payload),
   setRecoverySettings: (payload) => ipcRenderer.invoke("brake:set-recovery-settings", payload),
+  cancelRecoveryUnlock: () => ipcRenderer.invoke("brake:cancel-recovery-unlock"),
   setShutdownAfterLockout: (payload) => ipcRenderer.invoke("brake:set-shutdown-after-lockout", payload),
   animeStatus: () => ipcRenderer.invoke("brake:anime-status"),
   downloadAnime: () => ipcRenderer.invoke("brake:anime-download"),

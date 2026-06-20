@@ -22,6 +22,7 @@ from brake.state import State
 from brake.state.crypto import hash_password
 from brake.state.first_run import ensure_first_run_state
 from brake.state.recovery import RecoveryStore
+from brake.state.schema import LOCKOUT_RECOVERY_DELAY_DEFAULT, SHUTDOWN_AFTER_LOCKOUT_DEFAULT
 
 DEV_PASSWORD = "brake-dev-password"
 
@@ -58,8 +59,11 @@ def _status_payload(controller: Controller) -> dict[str, Any]:
         "recoveryUnlockPending": bool(status.get("recovery_unlock_pending", False)),
         "recoveryUnlockDelayMinutes": int(status.get("recovery_unlock_delay_minutes", 15) or 15),
         "lockoutRecoveryEnabled": bool(status.get("lockout_recovery_enabled", True)),
-        "lockoutRecoveryDelayMinutes": int(status.get("lockout_recovery_delay_minutes", 15) or 15),
-        "shutdownAfterLockout": bool(status.get("shutdown_after_lockout", True)),
+        "lockoutRecoveryDelayMinutes": int(
+            status.get("lockout_recovery_delay_minutes", LOCKOUT_RECOVERY_DELAY_DEFAULT)
+            or LOCKOUT_RECOVERY_DELAY_DEFAULT
+        ),
+        "shutdownAfterLockout": bool(status.get("shutdown_after_lockout", SHUTDOWN_AFTER_LOCKOUT_DEFAULT)),
     }
 
 
@@ -110,6 +114,7 @@ def main(argv: list[str] | None = None) -> int:
     set_recovery_settings.add_argument("--lockout-recovery-enabled", choices=["true", "false"], required=True)
     set_recovery_settings.add_argument("--lockout-recovery-delay", type=int, required=True)
     set_recovery_settings.add_argument("--password", default="")
+    sub.add_parser("cancel-recovery-unlock")
 
     set_shutdown_after_lockout = sub.add_parser("set-shutdown-after-lockout")
     set_shutdown_after_lockout.add_argument("--enabled", choices=["true", "false"], required=True)
@@ -182,6 +187,9 @@ def main(argv: list[str] | None = None) -> int:
                 int(args.lockout_recovery_delay),
                 str(args.password or ""),
             )
+            payload = _ok(_status_payload(controller)) if ok else _error(err)
+        elif args.cmd == "cancel-recovery-unlock":
+            ok, err = controller.cancel_recovery_unlock()
             payload = _ok(_status_payload(controller)) if ok else _error(err)
         elif args.cmd == "set-shutdown-after-lockout":
             ok, err = controller.set_shutdown_after_lockout(
