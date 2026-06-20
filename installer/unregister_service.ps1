@@ -51,14 +51,18 @@ function Invoke-Sc {
     return $LASTEXITCODE
 }
 
+function Test-ServicePresent($svcName) {
+    & sc.exe query $svcName *> $null
+    return $LASTEXITCODE -eq 0
+}
+
 function Disable-ServiceRestart($svcName) {
     Invoke-Sc @("failure", $svcName, "reset=", "0", "actions=", '""') | Out-Null
     Invoke-Sc @("config", $svcName, "start=", "disabled") | Out-Null
 }
 
 function Stop-ServiceIfPresent($svcName) {
-    Invoke-Sc @("query", $svcName) | Out-Null
-    if ($LASTEXITCODE -ne 0) { return }
+    if (-not (Test-ServicePresent $svcName)) { return }
 
     Write-Host "Stopping $svcName..."
     Invoke-Sc @("stop", $svcName) | Out-Null
@@ -77,27 +81,33 @@ function Get-ServicePid($svcName) {
 
 function Wait-ServiceStopped($svcName, [int]$seconds = 10) {
     for ($i = 0; $i -lt ($seconds * 4); $i++) {
-        $pid = Get-ServicePid $svcName
-        if (-not $pid) { return $true }
+        $servicePid = Get-ServicePid $svcName
+        if (-not $servicePid) { return $true }
         Start-Sleep -Milliseconds 250
     }
     return $false
 }
 
 function Kill-ServiceProcess($svcName) {
-    $pid = Get-ServicePid $svcName
-    if (-not $pid) { return }
+    $servicePid = Get-ServicePid $svcName
+    if (-not $servicePid) { return }
 
-    Write-Host "Force-stopping $svcName pid=$pid..."
-    Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
+    Write-Host "Force-stopping $svcName pid=$servicePid..."
+    Stop-Process -Id $servicePid -Force -ErrorAction SilentlyContinue
 }
 
 function Delete-ServiceIfPresent($svcName) {
-    Invoke-Sc @("query", $svcName) | Out-Null
-    if ($LASTEXITCODE -ne 0) { return }
+    if (-not (Test-ServicePresent $svcName)) { return $true }
 
-    Write-Host "Deleting $svcName..."
-    Invoke-Sc @("delete", $svcName) | Out-Null
+    for ($i = 0; $i -lt 6; $i++) {
+        Write-Host "Deleting $svcName..."
+        Invoke-Sc @("delete", $svcName) | Out-Null
+        Start-Sleep -Milliseconds 500
+        if (-not (Test-ServicePresent $svcName)) { return $true }
+        Stop-BrakeProcesses | Out-Null
+    }
+
+    return -not (Test-ServicePresent $svcName)
 }
 
 function Wait-ServiceDeleted($svcName, [int]$seconds = 10) {
@@ -122,50 +132,62 @@ function Stop-AgentFromPidFile {
 }
 
 function Stop-BrakeProcesses {
+    param([int]$Passes = 5)
+
     Write-Host "Closing remaining Brake processes..."
     Stop-AgentFromPidFile
 
-    try {
-        $processes = Get-CimInstance Win32_Process |
-            Where-Object {
-                $_.Name -in @(
-                    "python.exe",
-                    "pythonw.exe",
-                    "electron.exe",
-                    "node.exe",
-                    "brake.exe",
-                    "Brake.exe",
-                    "BrakeAgent.exe",
-                    "BrakeBoot.exe",
-                    "BrakeBridge.exe",
-                    "BrakeLockout.exe",
-                    "BrakeUninstallGuard.exe",
-                    "wscript.exe"
-                )
-            }
-    } catch {
-        Write-Warning "Could not enumerate Brake processes: $_"
-        return
-    }
-
-    foreach ($proc in $processes) {
-        if ($proc.ProcessId -eq $PID) { continue }
-        $cmd = [string]$proc.CommandLine
-        $exe = [string]$proc.ExecutablePath
-        $isBrake =
-            ($cmd.IndexOf("brake.", [StringComparison]::OrdinalIgnoreCase) -ge 0) -or
-            ($cmd.IndexOf("start-brake", [StringComparison]::OrdinalIgnoreCase) -ge 0) -or
-            ($cmd.IndexOf($repoRoot, [StringComparison]::OrdinalIgnoreCase) -ge 0) -or
-            ($cmd.IndexOf($installRoot, [StringComparison]::OrdinalIgnoreCase) -ge 0) -or
-            ($cmd.IndexOf($dataDir, [StringComparison]::OrdinalIgnoreCase) -ge 0) -or
-            ($exe.IndexOf($repoRoot, [StringComparison]::OrdinalIgnoreCase) -ge 0) -or
-            ($exe.IndexOf($installRoot, [StringComparison]::OrdinalIgnoreCase) -ge 0)
-
-        if ($isBrake) {
-            Write-Host "Stopping $($proc.Name) pid=$($proc.ProcessId)"
-            Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue
+    for ($pass = 0; $pass -lt $Passes; $pass++) {
+        try {
+            $processes = Get-CimInstance Win32_Process |
+                Where-Object {
+                    $_.Name -in @(
+                        "python.exe",
+                        "pythonw.exe",
+                        "electron.exe",
+                        "node.exe",
+                        "brake.exe",
+                        "Brake.exe",
+                        "BrakeAgent.exe",
+                        "BrakeBoot.exe",
+                        "BrakeBridge.exe",
+                        "BrakeLockout.exe",
+                        "BrakeUninstallGuard.exe",
+                        "wscript.exe"
+                    )
+                }
+        } catch {
+            Write-Warning "Could not enumerate Brake processes: $_"
+            return $false
         }
+
+        $found = $false
+        foreach ($proc in $processes) {
+            if ($proc.ProcessId -eq $PID) { continue }
+            $cmd = [string]$proc.CommandLine
+            $exe = [string]$proc.ExecutablePath
+            $isBrake =
+                ($cmd.IndexOf("brake.", [StringComparison]::OrdinalIgnoreCase) -ge 0) -or
+                ($cmd.IndexOf("start-brake", [StringComparison]::OrdinalIgnoreCase) -ge 0) -or
+                ($cmd.IndexOf($repoRoot, [StringComparison]::OrdinalIgnoreCase) -ge 0) -or
+                ($cmd.IndexOf($installRoot, [StringComparison]::OrdinalIgnoreCase) -ge 0) -or
+                ($cmd.IndexOf($dataDir, [StringComparison]::OrdinalIgnoreCase) -ge 0) -or
+                ($exe.IndexOf($repoRoot, [StringComparison]::OrdinalIgnoreCase) -ge 0) -or
+                ($exe.IndexOf($installRoot, [StringComparison]::OrdinalIgnoreCase) -ge 0)
+
+            if ($isBrake) {
+                $found = $true
+                Write-Host "Stopping $($proc.Name) pid=$($proc.ProcessId)"
+                & taskkill.exe /PID $proc.ProcessId /T /F 2>&1 | ForEach-Object { Write-Host $_ }
+                Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        if (-not $found) { return $true }
+        Start-Sleep -Milliseconds 600
     }
+
+    return $false
 }
 
 function Remove-PathRobust {
@@ -230,7 +252,10 @@ Start-Sleep -Seconds 1
 
 foreach ($svc in $serviceNames) {
     Disable-ServiceRestart $svc
-    Delete-ServiceIfPresent $svc
+    if (-not (Delete-ServiceIfPresent $svc)) {
+        Write-Warning "$svc could not be deleted."
+        $uninstallComplete = $false
+    }
 }
 
 foreach ($svc in $serviceNames) {
@@ -260,6 +285,11 @@ foreach ($shortcut in $shortcutPaths) {
 Write-Host "Removing Brake local data..."
 if (-not (Remove-LocalData)) {
     Write-Warning "Could not fully remove $dataDir because a file is still in use."
+    $uninstallComplete = $false
+}
+
+if (-not (Stop-BrakeProcesses -Passes 8)) {
+    Write-Warning "Brake processes are still running after repeated stop attempts."
     $uninstallComplete = $false
 }
 
@@ -308,3 +338,5 @@ Remove-Item -LiteralPath '$repoRoot' -Recurse -Force -ErrorAction SilentlyContin
 } else {
     Write-Host "You can now delete the Brake source/app folder if you want a full removal."
 }
+
+exit 0
