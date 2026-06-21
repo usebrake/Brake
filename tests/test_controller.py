@@ -111,7 +111,7 @@ def test_commitment_blocks_recovery_loosening_but_allows_stricter(tmp: Path) -> 
 def test_shutdown_toggle_requires_password_to_loosen_when_enabled(tmp: Path) -> None:
     Controller, State, StateStore, hash_password = _fresh(tmp)
     store = StateStore()
-    store.save(State(password_hash=hash_password("password"), enabled=True))
+    store.save(State(password_hash=hash_password("password"), enabled=True, shutdown_after_lockout=True))
 
     controller = Controller(allow_direct_writes=True)
     controller.service_up = lambda: False  # type: ignore[method-assign]

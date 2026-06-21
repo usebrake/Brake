@@ -64,6 +64,11 @@ def _on_done(persist: LockoutPersistence, shutdown_on_done: bool):
     return done
 
 
+def _lockout_recovery_enabled_for_ui() -> bool:
+    """Whether the lockout screen should expose recovery-code release."""
+    return lockout_recovery_available()
+
+
 def _run_persistent(duration: int, reason: str, message: str = "", shutdown_on_done: bool = False) -> int:
     persist = LockoutPersistence()
     record = persist.start(duration, reason, message=message, shutdown_on_done=shutdown_on_done)
@@ -76,7 +81,7 @@ def _run_persistent(duration: int, reason: str, message: str = "", shutdown_on_d
             reason=reason,
             message=message,
             on_done=_on_done(persist, shutdown_on_done),
-            recovery_enabled=shutdown_on_done and lockout_recovery_available(),
+            recovery_enabled=_lockout_recovery_enabled_for_ui(),
             on_recovery_submit=lambda code: apply_lockout_recovery(code, persistence=persist),
         ).run()
     finally:
@@ -109,7 +114,7 @@ def _run_resume() -> int:
             reason=record.reason,
             message=record.message,
             on_done=_on_done(persist, record.shutdown_on_done),
-            recovery_enabled=record.shutdown_on_done and lockout_recovery_available(),
+            recovery_enabled=_lockout_recovery_enabled_for_ui(),
             on_recovery_submit=lambda code: apply_lockout_recovery(code, persistence=persist),
         ).run()
     finally:

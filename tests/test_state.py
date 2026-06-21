@@ -49,11 +49,11 @@ def test_roundtrip_and_password_verify(tmp: Path) -> None:
     assert loaded.detection_sensitivity == "balanced"
     assert loaded.anime_detection_enabled is False
     assert loaded.anime_detection_mode == "standard"
-    assert loaded.shutdown_after_lockout is True
+    assert loaded.shutdown_after_lockout is False
     assert loaded.recovery_unlock_after is None
     assert loaded.recovery_unlock_delay_minutes == 15
     assert loaded.lockout_recovery_enabled is True
-    assert loaded.lockout_recovery_delay_minutes == 15
+    assert loaded.lockout_recovery_delay_minutes == 5
     assert crypto_mod.verify_password(loaded.password_hash, pw)
     assert not crypto_mod.verify_password(loaded.password_hash, "wrong")
     print("  [ok] roundtrip + password verify (v11 schema)")
@@ -164,7 +164,7 @@ def test_v1_to_v9_migration(tmp: Path) -> None:
     assert loaded.recovery_unlock_after is None
     assert loaded.recovery_unlock_delay_minutes == 15
     assert loaded.lockout_recovery_enabled is True
-    assert loaded.lockout_recovery_delay_minutes == 15
+    assert loaded.lockout_recovery_delay_minutes == 5
     assert not hasattr(loaded, "locked_until")
     assert not hasattr(loaded, "ocr_enabled")
 
@@ -342,7 +342,7 @@ def test_v8_to_v9_migration_seeds_recovery_unlock(tmp: Path) -> None:
     assert loaded.recovery_unlock_after is None
     assert loaded.recovery_unlock_delay_minutes == 15
     assert loaded.lockout_recovery_enabled is True
-    assert loaded.lockout_recovery_delay_minutes == 15
+    assert loaded.lockout_recovery_delay_minutes == 5
     print("  [ok] v8 -> v9 migration seeds recovery unlock default")
 
 
@@ -369,8 +369,8 @@ def test_v9_to_v11_migration_seeds_recovery_settings_and_shutdown(tmp: Path) -> 
     assert loaded.anime_detection_mode == "standard"
     assert loaded.recovery_unlock_delay_minutes == 15
     assert loaded.lockout_recovery_enabled is True
-    assert loaded.lockout_recovery_delay_minutes == 15
-    assert loaded.shutdown_after_lockout is True
+    assert loaded.lockout_recovery_delay_minutes == 5
+    assert loaded.shutdown_after_lockout is False
     print("  [ok] v9 -> v11 migration seeds recovery settings and shutdown")
 
 

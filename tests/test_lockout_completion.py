@@ -38,8 +38,24 @@ def test_shutdown_attempted_even_if_lockout_clear_fails() -> None:
     print("  [ok] shutdown still runs if lockout cleanup fails")
 
 
+def test_lockout_recovery_ui_does_not_depend_on_shutdown() -> None:
+    import brake.lockout.__main__ as lockout_main
+
+    original_available = lockout_main.lockout_recovery_available
+    try:
+        lockout_main.lockout_recovery_available = lambda: True
+        assert lockout_main._lockout_recovery_enabled_for_ui() is True
+    finally:
+        lockout_main.lockout_recovery_available = original_available
+
+    print("  [ok] lockout recovery UI is independent of shutdown setting")
+
+
 def main() -> int:
-    tests = [test_shutdown_attempted_even_if_lockout_clear_fails]
+    tests = [
+        test_shutdown_attempted_even_if_lockout_clear_fails,
+        test_lockout_recovery_ui_does_not_depend_on_shutdown,
+    ]
     for fn in tests:
         print(f"\n{fn.__name__}")
         fn()

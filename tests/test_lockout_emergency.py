@@ -29,11 +29,11 @@ def _fresh(tmp: Path):
     return apply_lockout_recovery, lockout_recovery_available, persistence, recovery_store, State, store, hash_password
 
 
-def test_lockout_recovery_hidden_by_default(tmp: Path) -> None:
+def test_lockout_recovery_available_by_default(tmp: Path) -> None:
     _, available, _, _, State, store, hash_password = _fresh(tmp)
     store.save(State(password_hash=hash_password("password"), enabled=True))
-    assert available(store) is False
-    print("  [ok] lockout recovery is hidden by default")
+    assert available(store) is True
+    print("  [ok] lockout recovery is available by default")
 
 
 def test_wrong_recovery_code_does_not_change_lockout(tmp: Path) -> None:
@@ -101,7 +101,7 @@ def test_recovery_code_replaces_lockout_timer_and_skips_shutdown(tmp: Path) -> N
 
 def main() -> int:
     tests = [
-        test_lockout_recovery_hidden_by_default,
+        test_lockout_recovery_available_by_default,
         test_wrong_recovery_code_does_not_change_lockout,
         test_recovery_code_replaces_lockout_timer_and_skips_shutdown,
     ]
