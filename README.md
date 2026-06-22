@@ -24,7 +24,16 @@ Download the installer only from the official GitHub release or the Brake websit
 
 ## Screenshots
 
-Screenshots are being refreshed for the new Brake UI.
+<table>
+  <tr>
+    <td><img src="docs/screenshots/brake-overview.png" alt="Brake overview tab with commitment active" /></td>
+    <td><img src="docs/screenshots/brake-illustrated.png" alt="Brake illustrated detector tab" /></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/brake-advanced.png" alt="Brake advanced settings tab" /></td>
+    <td><img src="docs/screenshots/brake-lockout.png" alt="Brake lockout screen" /></td>
+  </tr>
+</table>
 
 ## What Brake Does
 
