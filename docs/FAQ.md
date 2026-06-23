@@ -20,11 +20,11 @@ Do not delete `C:\Program Files\Brake` unless you are uninstalling.
 
 ## Why does hard explicit content shut down Windows?
 
-The shutdown makes the consequence harder to ignore. It breaks the session and force-closes open apps. Repeated full lockouts within 24 hours can make the next lockout longer. You can turn shutdown after lockout off in Advanced when you are not in a commitment.
+Shutdown after lockout is an optional consequence. When it is on, it breaks the session and force-closes open apps. Repeated full lockouts within 24 hours can make the next lockout longer. You can change shutdown after lockout in Advanced when you are not in a commitment.
 
 ## What about TV, movies, or accidental nudity?
 
-Brake no longer uses the short incidental nudity warning lockout. Clear explicit content still triggers the full lockout through the normal confirmation flow.
+Brake no longer uses the short incidental nudity warning lockout. Brief movie/TV nudity should usually pass. Sustained context nudity can escalate to a full lockout when it persists over time.
 
 ## Will it slow my computer down?
 

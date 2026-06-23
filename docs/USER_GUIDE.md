@@ -17,13 +17,13 @@ It runs locally on your computer. It checks screenshots on your device, uses loc
 
 When protection is on, Brake checks the screen in the background. It watches and reacts; it does not block websites or apps.
 
-Clear explicit content triggers a full lockout. Repeated full lockouts within 24 hours can make the next lockout longer. By default, Windows shuts down when that lockout ends and force-closes open apps, so save your work often. You can turn that shutdown behavior off in Advanced when you are not in a commitment.
+Clear explicit content triggers a full lockout. Sustained context nudity can also trigger a full lockout when it persists over time. Repeated full lockouts within 24 hours can make the next lockout longer.
 
-Incidental or partial nudity does not create a short warning lockout.
+Brake no longer uses the short incidental nudity warning lockout. Brief movie/TV nudity should usually pass, but repeatedly visible context nudity is treated as intentional viewing.
 
 ## Detection
 
-Brake uses one default detection policy. Clear explicit content triggers the full lockout through the normal confirmation flow. The app does not expose separate sensitivity mode choices.
+Brake uses one default detection policy. Clear explicit content triggers the full lockout through the normal confirmation flow, and repeated context nudity can escalate when it persists. The app does not expose separate sensitivity mode choices.
 
 ## Commitment
 
@@ -39,7 +39,7 @@ It can reset your password immediately. It can also start an emergency cooldown 
 
 Do not keep the recovery code somewhere easy to reach on the same computer. Write it on paper, take a photo on your phone, or give it to someone you trust. If you want the strongest commitment, you can choose not to copy it, but a forgotten password may require a full reset.
 
-Advanced also has an optional lockout recovery setting. It is off by default. If you turn it on, a small emergency option appears during a full lockout. Entering the recovery code there starts a separate lockout recovery cooldown, skips shutdown at the end, and leaves protection on.
+Advanced also has a lockout recovery setting. When it is on, a small emergency option appears during a full lockout. Entering the recovery code there starts a separate lockout recovery cooldown, skips shutdown at the end, and leaves protection on.
 
 ## Illustrated content
 

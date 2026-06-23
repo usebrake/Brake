@@ -108,6 +108,14 @@ def _anime_context_hit(label: str = "POSSIBLE NSFW ART (full)"):
     )
 
 
+class _Clock:
+    def __init__(self, now: float = 1_000.0) -> None:
+        self.now = now
+
+    def __call__(self) -> float:
+        return self.now
+
+
 def _nudity_photo_context_result():
     from brake.detectors.base import DetectionResult
 
@@ -163,6 +171,153 @@ def test_context_nudity_does_not_start_lockout() -> None:
     assert calls == []
     assert wants_confirm is True
     print("  [ok] context nudity asks for confirmation without lockout")
+
+
+def test_persistent_context_nudity_triggers_full_lockout() -> None:
+    import brake.service.watcher as watcher_mod
+
+    calls, original_spawn = _patch_lockout(watcher_mod)
+    original_monotonic = watcher_mod.time.monotonic
+    clock = _Clock()
+    watcher_mod.time.monotonic = clock
+    try:
+        w = _watcher()
+        for offset, reason in (
+            (0.0, "window"),
+            (6.0, "sustained"),
+            (11.0, "periodic"),
+            (16.0, "periodic"),
+        ):
+            clock.now = 1_000.0 + offset
+            wants_confirm = w._handle_detection(
+                _context_hit(),
+                evidential=(reason != "periodic"),
+                scan_reason=reason,
+            )
+            if offset < 16.0:
+                assert wants_confirm is True
+                assert calls == []
+    finally:
+        watcher_mod.time.monotonic = original_monotonic
+        watcher_mod._spawn_lockout = original_spawn
+
+    assert len(calls) == 1
+    assert calls[0].reason == "PERSISTENT CONTEXT NUDITY"
+    assert calls[0].duration == 15 * 60
+    print("  [ok] persistent context nudity escalates to full lockout")
+
+
+def test_context_nudity_needs_minimum_span() -> None:
+    import brake.service.watcher as watcher_mod
+
+    calls, original_spawn = _patch_lockout(watcher_mod)
+    original_monotonic = watcher_mod.time.monotonic
+    clock = _Clock()
+    watcher_mod.time.monotonic = clock
+    try:
+        w = _watcher()
+        for offset, reason in (
+            (0.0, "window"),
+            (3.0, "sustained"),
+            (6.0, "settle"),
+            (11.0, "periodic"),
+        ):
+            clock.now = 1_000.0 + offset
+            w._handle_detection(
+                _context_hit(),
+                evidential=(reason != "periodic"),
+                scan_reason=reason,
+            )
+    finally:
+        watcher_mod.time.monotonic = original_monotonic
+        watcher_mod._spawn_lockout = original_spawn
+
+    assert calls == []
+    print("  [ok] context nudity cannot lock before the minimum span")
+
+
+def test_context_nudity_needs_two_evidential_scans() -> None:
+    import brake.service.watcher as watcher_mod
+
+    calls, original_spawn = _patch_lockout(watcher_mod)
+    original_monotonic = watcher_mod.time.monotonic
+    clock = _Clock()
+    watcher_mod.time.monotonic = clock
+    try:
+        w = _watcher()
+        for offset, reason in (
+            (0.0, "window"),
+            (16.0, "periodic"),
+            (22.0, "periodic"),
+            (28.0, "periodic"),
+        ):
+            clock.now = 1_000.0 + offset
+            w._handle_detection(
+                _context_hit(),
+                evidential=(reason != "periodic"),
+                scan_reason=reason,
+            )
+    finally:
+        watcher_mod.time.monotonic = original_monotonic
+        watcher_mod._spawn_lockout = original_spawn
+
+    assert calls == []
+    print("  [ok] repeated static context needs at least two evidential scans")
+
+
+def test_clean_period_resets_context_exposure() -> None:
+    import brake.service.watcher as watcher_mod
+
+    calls, original_spawn = _patch_lockout(watcher_mod)
+    original_monotonic = watcher_mod.time.monotonic
+    clock = _Clock()
+    watcher_mod.time.monotonic = clock
+    try:
+        w = _watcher()
+        for offset, reason in (
+            (0.0, "window"),
+            (6.0, "sustained"),
+            (12.0, "periodic"),
+        ):
+            clock.now = 1_000.0 + offset
+            w._handle_detection(
+                _context_hit(),
+                evidential=(reason != "periodic"),
+                scan_reason=reason,
+            )
+
+        clock.now = 1_060.0
+        w._note_context_scan_without_exposure()
+        assert w._context_exposure_events == []
+
+        clock.now = 1_061.0
+        w._handle_detection(_context_hit(), evidential=True, scan_reason="window")
+    finally:
+        watcher_mod.time.monotonic = original_monotonic
+        watcher_mod._spawn_lockout = original_spawn
+
+    assert calls == []
+    print("  [ok] clean time resets persistent context exposure")
+
+
+def test_illustrated_context_does_not_increment_context_exposure() -> None:
+    import brake.service.watcher as watcher_mod
+
+    calls, original_spawn = _patch_lockout(watcher_mod)
+    original_monotonic = watcher_mod.time.monotonic
+    clock = _Clock()
+    watcher_mod.time.monotonic = clock
+    try:
+        w = _watcher(anime_detection_enabled=True)
+        for offset in (0.0, 6.0, 12.0, 18.0, 24.0):
+            clock.now = 1_000.0 + offset
+            w._handle_detection(_anime_context_hit(), evidential=True, scan_reason="sustained")
+    finally:
+        watcher_mod.time.monotonic = original_monotonic
+        watcher_mod._spawn_lockout = original_spawn
+
+    assert calls == []
+    print("  [ok] illustrated context does not affect photo context exposure")
 
 
 def test_hard_explicit_triggers_full_lockout() -> None:
@@ -509,6 +664,11 @@ def test_normal_lockout_expiry_does_not_arm_recovery_grace() -> None:
 def main() -> int:
     tests = [
         test_context_nudity_does_not_start_lockout,
+        test_persistent_context_nudity_triggers_full_lockout,
+        test_context_nudity_needs_minimum_span,
+        test_context_nudity_needs_two_evidential_scans,
+        test_clean_period_resets_context_exposure,
+        test_illustrated_context_does_not_increment_context_exposure,
         test_hard_explicit_triggers_full_lockout,
         test_second_lockout_explains_scaled_duration,
         test_fail_secure_lockout_uses_fifteen_minute_base,

@@ -56,6 +56,24 @@ POST_LOCKOUT_RECOVERY_GRACE_SECONDS = 10.0
 ILLUSTRATED_NATIVE_FULLSCREEN_STRIKES = 3
 ILLUSTRATED_NATIVE_FULLSCREEN_WINDOW = 30.0
 ILLUSTRATED_NATIVE_FULLSCREEN_MIN_SPAN = 8.0
+CONTEXT_EXPOSURE_WINDOW_SECONDS = 90.0
+CONTEXT_EXPOSURE_MIN_SPAN_SECONDS = 15.0
+CONTEXT_EXPOSURE_MIN_HITS = 4
+CONTEXT_EXPOSURE_MIN_EVIDENTIAL_HITS = 2
+CONTEXT_EXPOSURE_MIN_CONFIDENCE = 0.78
+CONTEXT_EXPOSURE_MIN_AVG_CONFIDENCE = 0.78
+CONTEXT_EXPOSURE_CLEAN_RESET_SECONDS = 45.0
+CONTEXT_EXPOSURE_CLASSES = {
+    "FEMALE_BREAST_EXPOSED",
+    "BUTTOCKS_EXPOSED",
+}
+CONTEXT_EXPOSURE_EVIDENTIAL_REASONS = {
+    "startup",
+    "burst",
+    "sustained",
+    "settle",
+    "window",
+}
 
 _ILLUSTRATED_FAST_CONFIRM_PROCESSES = {
     "brave.exe",
@@ -167,6 +185,8 @@ class Watcher:
         self._post_lockout_recovery_grace_until = 0.0
         self._illustrated_native_fullscreen_first_at = 0.0
         self._illustrated_native_fullscreen_strikes = 0
+        self._context_exposure_events: list[tuple[float, float, bool, str, str]] = []
+        self._last_context_exposure_at = 0.0
         self.scan_environment = ScanEnvironmentMonitor()
         self._state_cached_at = 0.0
         self._state_cache: Optional[tuple] = None  # (state, fail_secure)
@@ -271,6 +291,7 @@ class Watcher:
                 self._last_hard_pending_label = ""
                 self._last_hard_pending_at = 0.0
                 self._hard_strike_count = 0
+                self._reset_context_exposure()
                 _log.info(
                     "Post-recovery grace armed for %.0fs.",
                     POST_LOCKOUT_RECOVERY_GRACE_SECONDS,
@@ -281,7 +302,13 @@ class Watcher:
         self._lockout_until = now + remaining
         return remaining
 
-    def _handle_detection(self, hit: DetectionResult, *, evidential: bool = True) -> bool:
+    def _handle_detection(
+        self,
+        hit: DetectionResult,
+        *,
+        evidential: bool = True,
+        scan_reason: str = "",
+    ) -> bool:
         """Handle one hit. Return True when a fast confirmation scan should run.
 
         ``evidential`` is False for safety-sweep rescans of an unchanged
@@ -289,12 +316,112 @@ class Watcher:
         information, so they may arm pending strikes but never confirm one.
         """
         if hit.severity == "context":
+            if self._handle_context_exposure(hit, evidential=evidential, scan_reason=scan_reason):
+                return False
             _log.info("context detection noted without lockout: label=%s", hit.label)
             return True
 
         return self._handle_hard(
             hit, fast_confirm=True, evidential=evidential
         )
+
+    def _reset_context_exposure(self) -> None:
+        self._context_exposure_events = []
+        self._last_context_exposure_at = 0.0
+
+    @staticmethod
+    def _context_exposure_class(hit: DetectionResult) -> str:
+        if hit.detector != "nudity" or hit.severity != "context" or not hit.triggered:
+            return ""
+        label = hit.label or ""
+        for class_name in CONTEXT_EXPOSURE_CLASSES:
+            if class_name in label:
+                return class_name
+        return ""
+
+    def _note_context_scan_without_exposure(self) -> None:
+        if (
+            self._last_context_exposure_at > 0
+            and time.monotonic() - self._last_context_exposure_at >= CONTEXT_EXPOSURE_CLEAN_RESET_SECONDS
+        ):
+            _log.info("persistent context nudity exposure reset after clean period.")
+            self._reset_context_exposure()
+
+    def _handle_context_exposure(
+        self,
+        hit: DetectionResult,
+        *,
+        evidential: bool,
+        scan_reason: str,
+    ) -> bool:
+        class_name = self._context_exposure_class(hit)
+        if not class_name or hit.confidence < CONTEXT_EXPOSURE_MIN_CONFIDENCE:
+            return False
+
+        now = time.monotonic()
+        context_evidential = (
+            scan_reason in CONTEXT_EXPOSURE_EVIDENTIAL_REASONS
+            if scan_reason
+            else bool(evidential)
+        )
+        self._context_exposure_events.append((
+            now,
+            float(hit.confidence),
+            context_evidential,
+            hit.label or class_name,
+            hit.region or "",
+        ))
+        self._last_context_exposure_at = now
+        cutoff = now - CONTEXT_EXPOSURE_WINDOW_SECONDS
+        self._context_exposure_events = [
+            event for event in self._context_exposure_events if event[0] >= cutoff
+        ]
+
+        events = self._context_exposure_events
+        count = len(events)
+        first_at = events[0][0] if events else now
+        span = now - first_at
+        evidential_count = sum(1 for event in events if event[2])
+        avg_confidence = sum(event[1] for event in events) / count if count else 0.0
+        _log.info(
+            "persistent context nudity exposure: count=%d evidential=%d span=%.1fs avg=%.2f label=%s region=%s",
+            count,
+            evidential_count,
+            span,
+            avg_confidence,
+            hit.label,
+            hit.region,
+        )
+
+        if (
+            count >= CONTEXT_EXPOSURE_MIN_HITS
+            and evidential_count >= CONTEXT_EXPOSURE_MIN_EVIDENTIAL_HITS
+            and span >= CONTEXT_EXPOSURE_MIN_SPAN_SECONDS
+            and avg_confidence >= CONTEXT_EXPOSURE_MIN_AVG_CONFIDENCE
+        ):
+            _log.warning(
+                "persistent context nudity confirmed: count=%d evidential=%d span=%.1fs avg=%.2f",
+                count,
+                evidential_count,
+                span,
+                avg_confidence,
+            )
+            self._reset_context_exposure()
+            self._last_hard_pending_label = ""
+            self._last_hard_pending_at = 0.0
+            self._hard_strike_count = 0
+            self._apply_hard_lockout(
+                DetectionResult(
+                    detector=hit.detector,
+                    triggered=True,
+                    confidence=avg_confidence,
+                    label="PERSISTENT CONTEXT NUDITY",
+                    severity="hard",
+                    region=hit.region,
+                )
+            )
+            return True
+        return False
 
     @staticmethod
     def _is_native_fullscreen_illustrated_surface(snapshot) -> bool:
@@ -437,6 +564,7 @@ class Watcher:
             self._last_hard_pending_label = ""
             self._last_hard_pending_at = 0.0
             self._hard_strike_count = 0
+            self._reset_context_exposure()
             _log.warning("hard detection immediately confirmed: label=%s conf=%.2f", label, hit.confidence)
             self._apply_hard_lockout(hit)
             return False
@@ -453,6 +581,7 @@ class Watcher:
             self._last_hard_pending_label = ""
             self._last_hard_pending_at = 0.0
             self._hard_strike_count = 0
+            self._reset_context_exposure()
             _log.warning("hard detection confirmed by second strike: label=%s conf=%.2f", label, hit.confidence)
             self._apply_hard_lockout(hit)
             return False
@@ -504,6 +633,7 @@ class Watcher:
             message=message,
             shutdown_on_done=shutdown_on_done,
         )
+        self._reset_context_exposure()
         self._lockout_was_recovered = False
         self._post_lockout_recovery_grace_until = 0.0
         self._lockout_until = time.monotonic() + duration
@@ -631,6 +761,7 @@ class Watcher:
                     )
                 pending_zoom = None
                 confirm_streak = 0
+                self._reset_context_exposure()
                 time.sleep(t(3, 1))
                 continue
             if was_running is not True:
@@ -643,6 +774,7 @@ class Watcher:
                 pending_zoom = None
                 confirm_streak = 0
                 self._reset_illustrated_native_fullscreen_strikes()
+                self._reset_context_exposure()
                 time.sleep(min(5.0, max(0.5, lockout_remaining)))
                 continue
 
@@ -729,7 +861,9 @@ class Watcher:
                         # Periodic safety sweeps re-scan unchanged pixels; they
                         # may arm strikes/warnings but never confirm a lockout.
                         wants_confirm = self._handle_detection(
-                            hit, evidential=(decision.reason != "periodic")
+                            hit,
+                            evidential=(decision.reason != "periodic"),
+                            scan_reason=decision.reason,
                         )
                         confirm_region = hit.region
                 elif suspicion is not None:
@@ -757,6 +891,7 @@ class Watcher:
                     )
                 elif hit is None and suspicion is None:
                     confirm_streak = 0
+                    self._note_context_scan_without_exposure()
 
             tick = decision.tick_seconds
             if snapshot is not None and snapshot.share_sensitive:
