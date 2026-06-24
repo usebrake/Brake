@@ -57,11 +57,14 @@ ILLUSTRATED_NATIVE_FULLSCREEN_STRIKES = 3
 ILLUSTRATED_NATIVE_FULLSCREEN_WINDOW = 30.0
 ILLUSTRATED_NATIVE_FULLSCREEN_MIN_SPAN = 8.0
 CONTEXT_EXPOSURE_WINDOW_SECONDS = 90.0
-CONTEXT_EXPOSURE_MIN_SPAN_SECONDS = 15.0
-CONTEXT_EXPOSURE_MIN_HITS = 4
+CONTEXT_EXPOSURE_MIN_SPAN_SECONDS = 12.0
+CONTEXT_EXPOSURE_MIN_HITS = 3
 CONTEXT_EXPOSURE_MIN_EVIDENTIAL_HITS = 2
 CONTEXT_EXPOSURE_MIN_CONFIDENCE = 0.78
 CONTEXT_EXPOSURE_MIN_AVG_CONFIDENCE = 0.78
+CONTEXT_EXPOSURE_FAST_MIN_SPAN_SECONDS = 8.0
+CONTEXT_EXPOSURE_FAST_MIN_HITS = 2
+CONTEXT_EXPOSURE_FAST_MIN_AVG_CONFIDENCE = 0.88
 CONTEXT_EXPOSURE_CLEAN_RESET_SECONDS = 45.0
 CONTEXT_EXPOSURE_CLASSES = {
     "FEMALE_BREAST_EXPOSED",
@@ -393,14 +396,23 @@ class Watcher:
             hit.region,
         )
 
-        if (
+        normal_confirmed = (
             count >= CONTEXT_EXPOSURE_MIN_HITS
             and evidential_count >= CONTEXT_EXPOSURE_MIN_EVIDENTIAL_HITS
             and span >= CONTEXT_EXPOSURE_MIN_SPAN_SECONDS
             and avg_confidence >= CONTEXT_EXPOSURE_MIN_AVG_CONFIDENCE
-        ):
+        )
+        fast_confirmed = (
+            count >= CONTEXT_EXPOSURE_FAST_MIN_HITS
+            and evidential_count >= CONTEXT_EXPOSURE_MIN_EVIDENTIAL_HITS
+            and span >= CONTEXT_EXPOSURE_FAST_MIN_SPAN_SECONDS
+            and avg_confidence >= CONTEXT_EXPOSURE_FAST_MIN_AVG_CONFIDENCE
+        )
+
+        if normal_confirmed or fast_confirmed:
             _log.warning(
-                "persistent context nudity confirmed: count=%d evidential=%d span=%.1fs avg=%.2f",
+                "persistent context nudity confirmed: mode=%s count=%d evidential=%d span=%.1fs avg=%.2f",
+                "fast" if fast_confirmed and not normal_confirmed else "normal",
                 count,
                 evidential_count,
                 span,

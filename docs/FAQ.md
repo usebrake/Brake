@@ -24,7 +24,7 @@ Shutdown after lockout is an optional consequence. When it is on, it breaks the 
 
 ## What about TV, movies, or accidental nudity?
 
-Brake no longer uses the short incidental nudity warning lockout. Brief movie/TV nudity should usually pass. Sustained context nudity can escalate to a full lockout when it persists over time.
+Brake no longer uses the short incidental nudity warning lockout. Brief movie/TV nudity should usually pass. Sustained or repeated context nudity can escalate to a full lockout when it persists over time.
 
 ## Will it slow my computer down?
 

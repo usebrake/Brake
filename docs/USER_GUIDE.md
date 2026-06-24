@@ -17,7 +17,7 @@ It runs locally on your computer. It checks screenshots on your device, uses loc
 
 When protection is on, Brake checks the screen in the background. It watches and reacts; it does not block websites or apps.
 
-Clear explicit content triggers a full lockout. Sustained context nudity can also trigger a full lockout when it persists over time. Repeated full lockouts within 24 hours can make the next lockout longer.
+Clear explicit content triggers a full lockout. Sustained or repeated context nudity can also trigger a full lockout when it persists over time. Repeated full lockouts within 24 hours can make the next lockout longer.
 
 Brake no longer uses the short incidental nudity warning lockout. Brief movie/TV nudity should usually pass, but repeatedly visible context nudity is treated as intentional viewing.
 

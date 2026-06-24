@@ -40,7 +40,7 @@ Download the installer only from the official GitHub release or the Brake websit
 - Detects real photo/video explicit content with NudeNet.
 - Optionally detects illustrated explicit content with a separate local model.
 - Treats clear explicit content as a full lockout.
-- Brief incidental nudity does not create a short warning lockout; sustained context nudity can escalate to a full lockout.
+- Brief incidental nudity does not create a short warning lockout; sustained or repeated context nudity can escalate to a full lockout.
 - Can shut down Windows after a full lockout. This can be changed in Advanced when you are not in a commitment.
 - Remembers full lockouts for 24 hours so repeated incidents can make the next lockout longer.
 - Supports Commitment Mode so your password cannot turn protection off early.

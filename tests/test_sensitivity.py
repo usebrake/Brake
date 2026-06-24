@@ -69,13 +69,17 @@ class _Detector:
         return self.result
 
 
-def _context_hit(label: str = "CONTEXT NUDITY (BUTTOCKS_EXPOSED)"):
+def _context_hit(
+    label: str = "CONTEXT NUDITY (BUTTOCKS_EXPOSED)",
+    *,
+    confidence: float = 0.86,
+):
     from brake.detectors.base import DetectionResult
 
     return DetectionResult(
         detector="nudity",
         triggered=True,
-        confidence=0.86,
+        confidence=confidence,
         label=label,
         severity="context",
         region="center",
@@ -185,8 +189,7 @@ def test_persistent_context_nudity_triggers_full_lockout() -> None:
         for offset, reason in (
             (0.0, "window"),
             (6.0, "sustained"),
-            (11.0, "periodic"),
-            (16.0, "periodic"),
+            (12.0, "periodic"),
         ):
             clock.now = 1_000.0 + offset
             wants_confirm = w._handle_detection(
@@ -194,7 +197,7 @@ def test_persistent_context_nudity_triggers_full_lockout() -> None:
                 evidential=(reason != "periodic"),
                 scan_reason=reason,
             )
-            if offset < 16.0:
+            if offset < 12.0:
                 assert wants_confirm is True
                 assert calls == []
     finally:
@@ -205,6 +208,63 @@ def test_persistent_context_nudity_triggers_full_lockout() -> None:
     assert calls[0].reason == "PERSISTENT CONTEXT NUDITY"
     assert calls[0].duration == 15 * 60
     print("  [ok] persistent context nudity escalates to full lockout")
+
+
+def test_high_confidence_context_nudity_has_fast_path() -> None:
+    import brake.service.watcher as watcher_mod
+
+    calls, original_spawn = _patch_lockout(watcher_mod)
+    original_monotonic = watcher_mod.time.monotonic
+    clock = _Clock()
+    watcher_mod.time.monotonic = clock
+    try:
+        w = _watcher()
+        for offset, reason in (
+            (0.0, "window"),
+            (8.0, "sustained"),
+        ):
+            clock.now = 1_000.0 + offset
+            w._handle_detection(
+                _context_hit(confidence=0.91),
+                evidential=True,
+                scan_reason=reason,
+            )
+            if offset < 8.0:
+                assert calls == []
+    finally:
+        watcher_mod.time.monotonic = original_monotonic
+        watcher_mod._spawn_lockout = original_spawn
+
+    assert len(calls) == 1
+    assert calls[0].reason == "PERSISTENT CONTEXT NUDITY"
+    print("  [ok] high-confidence context nudity has a fast escalation path")
+
+
+def test_normal_confidence_context_nudity_does_not_use_fast_path() -> None:
+    import brake.service.watcher as watcher_mod
+
+    calls, original_spawn = _patch_lockout(watcher_mod)
+    original_monotonic = watcher_mod.time.monotonic
+    clock = _Clock()
+    watcher_mod.time.monotonic = clock
+    try:
+        w = _watcher()
+        for offset, reason in (
+            (0.0, "window"),
+            (8.0, "sustained"),
+        ):
+            clock.now = 1_000.0 + offset
+            w._handle_detection(
+                _context_hit(confidence=0.82),
+                evidential=True,
+                scan_reason=reason,
+            )
+    finally:
+        watcher_mod.time.monotonic = original_monotonic
+        watcher_mod._spawn_lockout = original_spawn
+
+    assert calls == []
+    print("  [ok] normal-confidence context nudity cannot use the fast path")
 
 
 def test_context_nudity_needs_minimum_span() -> None:
@@ -220,7 +280,6 @@ def test_context_nudity_needs_minimum_span() -> None:
             (0.0, "window"),
             (3.0, "sustained"),
             (6.0, "settle"),
-            (11.0, "periodic"),
         ):
             clock.now = 1_000.0 + offset
             w._handle_detection(
@@ -247,9 +306,8 @@ def test_context_nudity_needs_two_evidential_scans() -> None:
         w = _watcher()
         for offset, reason in (
             (0.0, "window"),
-            (16.0, "periodic"),
-            (22.0, "periodic"),
-            (28.0, "periodic"),
+            (12.0, "periodic"),
+            (18.0, "periodic"),
         ):
             clock.now = 1_000.0 + offset
             w._handle_detection(
@@ -277,7 +335,6 @@ def test_clean_period_resets_context_exposure() -> None:
         for offset, reason in (
             (0.0, "window"),
             (6.0, "sustained"),
-            (12.0, "periodic"),
         ):
             clock.now = 1_000.0 + offset
             w._handle_detection(
@@ -665,6 +722,8 @@ def main() -> int:
     tests = [
         test_context_nudity_does_not_start_lockout,
         test_persistent_context_nudity_triggers_full_lockout,
+        test_high_confidence_context_nudity_has_fast_path,
+        test_normal_confidence_context_nudity_does_not_use_fast_path,
         test_context_nudity_needs_minimum_span,
         test_context_nudity_needs_two_evidential_scans,
         test_clean_period_resets_context_exposure,
