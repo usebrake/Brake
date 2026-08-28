@@ -53,10 +53,11 @@ def test_roundtrip_and_password_verify(tmp: Path) -> None:
     assert loaded.recovery_unlock_after is None
     assert loaded.recovery_unlock_delay_minutes == 15
     assert loaded.lockout_recovery_enabled is True
-    assert loaded.lockout_recovery_delay_minutes == 5
+    assert loaded.lockout_recovery_delay_minutes == 0
+    assert loaded.lockout_recovery_uses_per_24h == 1
     assert crypto_mod.verify_password(loaded.password_hash, pw)
     assert not crypto_mod.verify_password(loaded.password_hash, "wrong")
-    print("  [ok] roundtrip + password verify (v11 schema)")
+    print("  [ok] roundtrip + password verify (v12 schema)")
 
 
 def test_invalid_sensitivity_coerces_to_balanced(tmp: Path) -> None:
@@ -84,11 +85,11 @@ def test_recovery_cooldown_clamping(tmp: Path) -> None:
         lockout_recovery_enabled=1,
     )
     assert state.recovery_unlock_delay_minutes == 60
-    assert state.lockout_recovery_delay_minutes == 1
+    assert state.lockout_recovery_delay_minutes == 0
     assert state.lockout_recovery_enabled is True
     assert state.recovery_unlock_delay_seconds() == 60 * 60
-    assert state.lockout_recovery_delay_seconds() == 60
-    print("  [ok] recovery cooldown settings clamp to [1, 60]")
+    assert state.lockout_recovery_delay_seconds() == 0
+    print("  [ok] emergency cooldown clamps to [1, 60] and lockout recovery to [0, 60]")
 
 
 def test_commitment_active(tmp: Path) -> None:
@@ -154,7 +155,7 @@ def test_v1_to_v9_migration(tmp: Path) -> None:
 
     loaded = store.load()
     assert loaded is not None
-    assert loaded.schema_version == 11
+    assert loaded.schema_version == 12
     assert loaded.enabled is True
     assert loaded.lockout_duration_minutes == 15
     assert loaded.committed_until is None
@@ -164,12 +165,13 @@ def test_v1_to_v9_migration(tmp: Path) -> None:
     assert loaded.recovery_unlock_after is None
     assert loaded.recovery_unlock_delay_minutes == 15
     assert loaded.lockout_recovery_enabled is True
-    assert loaded.lockout_recovery_delay_minutes == 5
+    assert loaded.lockout_recovery_delay_minutes == 0
+    assert loaded.lockout_recovery_uses_per_24h == 1
     assert not hasattr(loaded, "locked_until")
     assert not hasattr(loaded, "ocr_enabled")
 
     raw = json.loads((tmp / "state.json").read_text(encoding="utf-8"))
-    assert raw["payload"]["schema_version"] == 11
+    assert raw["payload"]["schema_version"] == 12
     assert "locked_until" not in raw["payload"]
     assert "ocr_enabled" not in raw["payload"]
     print("  [ok] v1 -> v9 migration drops old fields and seeds balanced")
@@ -188,7 +190,7 @@ def test_v2_to_v9_migration_seeds_balanced(tmp: Path) -> None:
 
     loaded = store.load()
     assert loaded is not None
-    assert loaded.schema_version == 11
+    assert loaded.schema_version == 12
     assert loaded.lockout_duration_minutes == 9
     assert loaded.detection_sensitivity == "balanced"
     assert loaded.anime_detection_enabled is False
@@ -211,7 +213,7 @@ def test_v3_to_v9_migration_drops_ocr_and_seeds_balanced(tmp: Path) -> None:
 
     loaded = store.load()
     assert loaded is not None
-    assert loaded.schema_version == 11
+    assert loaded.schema_version == 12
     assert loaded.lockout_duration_minutes == 8
     assert loaded.detection_sensitivity == "balanced"
     assert loaded.anime_detection_enabled is False
@@ -236,7 +238,7 @@ def test_v4_to_v9_migration_drops_ocr_and_seeds_balanced(tmp: Path) -> None:
 
     loaded = store.load()
     assert loaded is not None
-    assert loaded.schema_version == 11
+    assert loaded.schema_version == 12
     assert loaded.lockout_duration_minutes == 7
     assert loaded.detection_sensitivity == "balanced"
     assert loaded.anime_detection_enabled is False
@@ -245,7 +247,7 @@ def test_v4_to_v9_migration_drops_ocr_and_seeds_balanced(tmp: Path) -> None:
     assert not hasattr(loaded, "ocr_enabled")
 
     raw = json.loads((tmp / "state.json").read_text(encoding="utf-8"))
-    assert raw["payload"]["schema_version"] == 11
+    assert raw["payload"]["schema_version"] == 12
     assert "ocr_enabled" not in raw["payload"]
     print("  [ok] v4 -> v9 migration drops ocr, preserves duration, seeds balanced")
 
@@ -264,7 +266,7 @@ def test_v5_to_v9_migration_seeds_balanced(tmp: Path) -> None:
 
     loaded = store.load()
     assert loaded is not None
-    assert loaded.schema_version == 11
+    assert loaded.schema_version == 12
     assert loaded.lockout_duration_minutes == 6
     assert loaded.detection_sensitivity == "balanced"
     assert loaded.anime_detection_enabled is False
@@ -288,7 +290,7 @@ def test_v6_to_v9_migration_seeds_anime_defaults(tmp: Path) -> None:
 
     loaded = store.load()
     assert loaded is not None
-    assert loaded.schema_version == 11
+    assert loaded.schema_version == 12
     assert loaded.detection_sensitivity == "balanced"
     assert loaded.anime_detection_enabled is False
     assert loaded.anime_detection_mode == "standard"
@@ -312,7 +314,7 @@ def test_v7_to_v9_migration_seeds_anime_mode(tmp: Path) -> None:
 
     loaded = store.load()
     assert loaded is not None
-    assert loaded.schema_version == 11
+    assert loaded.schema_version == 12
     assert loaded.anime_detection_enabled is True
     assert loaded.anime_detection_mode == "standard"
     assert loaded.recovery_unlock_after is None
@@ -336,13 +338,13 @@ def test_v8_to_v9_migration_seeds_recovery_unlock(tmp: Path) -> None:
 
     loaded = store.load()
     assert loaded is not None
-    assert loaded.schema_version == 11
+    assert loaded.schema_version == 12
     assert loaded.anime_detection_enabled is True
     assert loaded.anime_detection_mode == "standard"
     assert loaded.recovery_unlock_after is None
     assert loaded.recovery_unlock_delay_minutes == 15
     assert loaded.lockout_recovery_enabled is True
-    assert loaded.lockout_recovery_delay_minutes == 5
+    assert loaded.lockout_recovery_delay_minutes == 0
     print("  [ok] v8 -> v9 migration seeds recovery unlock default")
 
 
@@ -364,14 +366,45 @@ def test_v9_to_v11_migration_seeds_recovery_settings_and_shutdown(tmp: Path) -> 
 
     loaded = store.load()
     assert loaded is not None
-    assert loaded.schema_version == 11
+    assert loaded.schema_version == 12
     assert loaded.detection_sensitivity == "balanced"
     assert loaded.anime_detection_mode == "standard"
     assert loaded.recovery_unlock_delay_minutes == 15
     assert loaded.lockout_recovery_enabled is True
-    assert loaded.lockout_recovery_delay_minutes == 5
+    assert loaded.lockout_recovery_delay_minutes == 0
     assert loaded.shutdown_after_lockout is False
     print("  [ok] v9 -> v11 migration seeds recovery settings and shutdown")
+
+
+def test_v11_to_v12_migration_adds_recovery_usage_limit(tmp: Path) -> None:
+    store, _, _, crypto_mod = _fresh_store(tmp)
+    payload = {
+        "password_hash": crypto_mod.hash_password("pw"),
+        "enabled": True,
+        "lockout_duration_minutes": 15,
+        "committed_until": None,
+        "detection_sensitivity": "balanced",
+        "anime_detection_enabled": False,
+        "anime_detection_mode": "standard",
+        "recovery_unlock_after": None,
+        "recovery_unlock_delay_minutes": 15,
+        "lockout_recovery_enabled": True,
+        "lockout_recovery_delay_minutes": 5,
+        "shutdown_after_lockout": False,
+        "created_at": "2026-06-24T00:00:00+00:00",
+        "schema_version": 11,
+    }
+    _write_envelope(tmp, payload, crypto_mod)
+
+    loaded = store.load()
+    assert loaded is not None
+    assert loaded.schema_version == 12
+    assert loaded.lockout_recovery_delay_minutes == 5
+    assert loaded.lockout_recovery_uses_per_24h == 1
+    assert loaded.lockout_recovery_used_at == []
+    raw = json.loads((tmp / "state.json").read_text(encoding="utf-8"))
+    assert raw["payload"]["schema_version"] == 12
+    print("  [ok] v11 -> v12 migration preserves cooldown and adds one recovery use per 24 hours")
 
 
 def test_recovery_unlock_schedule_and_apply(tmp: Path) -> None:
@@ -437,6 +470,7 @@ def main() -> int:
             test_v7_to_v9_migration_seeds_anime_mode,
             test_v8_to_v9_migration_seeds_recovery_unlock,
             test_v9_to_v11_migration_seeds_recovery_settings_and_shutdown,
+            test_v11_to_v12_migration_adds_recovery_usage_limit,
             test_recovery_unlock_schedule_and_apply,
         ):
             sub = tmp / fn.__name__

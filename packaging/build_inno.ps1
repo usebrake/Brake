@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.1.0-beta",
+    [string]$Version = "0.1.4-beta",
     [string]$InnoCompiler = ""
 )
 
@@ -33,8 +33,22 @@ if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE
 
 $installer = Join-Path $repoRoot "dist\\BrakeSetup-$Version.exe"
 if (Test-Path $installer) {
+    $latestInstaller = Join-Path $repoRoot "dist\\BrakeSetup.exe"
+    Copy-Item -LiteralPath $installer -Destination $latestInstaller -Force
+
+    $checksumsPath = Join-Path $repoRoot "dist\SHA256SUMS.txt"
+    $existingChecksums = @()
+    if (Test-Path $checksumsPath) {
+        $existingChecksums = Get-Content -LiteralPath $checksumsPath | Where-Object {
+            $_ -notmatch "  BrakeSetup(?:-$([regex]::Escape($Version)))?\.exe$"
+        }
+    }
     $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $installer).Hash.ToLowerInvariant()
-    Add-Content -Encoding ASCII -Path (Join-Path $repoRoot "dist\SHA256SUMS.txt") -Value "$hash  BrakeSetup-$Version.exe"
+    $updatedChecksums = @($existingChecksums) + @(
+        "$hash  BrakeSetup-$Version.exe",
+        "$hash  BrakeSetup.exe"
+    )
+    Set-Content -Encoding ASCII -LiteralPath $checksumsPath -Value $updatedChecksums
 }
 
 Write-Host "Installer complete: $installer"

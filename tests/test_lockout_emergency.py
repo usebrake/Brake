@@ -99,11 +99,95 @@ def test_recovery_code_replaces_lockout_timer_and_skips_shutdown(tmp: Path) -> N
     print("  [ok] valid recovery code starts lockout release without disabling protection")
 
 
+def test_default_recovery_is_immediate_and_only_once_per_24_hours(tmp: Path) -> None:
+    apply_recovery, available, persistence, recovery_store, State, store, hash_password = _fresh(tmp)
+    store.save(State(password_hash=hash_password("password"), enabled=True))
+    token = recovery_store.generate()
+    persistence.start(30 * 60, "TEST", shutdown_on_done=True)
+
+    ok, _, _ = apply_recovery(
+        token,
+        store=store,
+        recovery_store=recovery_store,
+        persistence=persistence,
+    )
+    assert ok is True
+    released = persistence.resume()
+    assert released is not None
+    assert released.duration_seconds == 0
+    assert released.shutdown_on_done is False
+    assert available(store) is False
+
+    persistence.start(30 * 60, "TEST-AGAIN", shutdown_on_done=True)
+    ok, error, _ = apply_recovery(
+        token,
+        store=store,
+        recovery_store=recovery_store,
+        persistence=persistence,
+    )
+    assert ok is False
+    assert error == "lockout_recovery_limit_reached"
+    saved = store.load()
+    assert saved is not None
+    assert len(saved.recent_lockout_recovery_uses()) == 1
+    print("  [ok] default recovery releases immediately and is limited to one use per 24 hours")
+
+
+def test_expired_recovery_use_rolls_out_of_window(tmp: Path) -> None:
+    apply_recovery, available, persistence, recovery_store, State, store, hash_password = _fresh(tmp)
+    old_use = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat(timespec="seconds")
+    store.save(State(
+        password_hash=hash_password("password"),
+        enabled=True,
+        lockout_recovery_used_at=[old_use],
+    ))
+    assert available(store) is True
+
+    token = recovery_store.generate()
+    persistence.start(30 * 60, "TEST", shutdown_on_done=True)
+    ok, _, _ = apply_recovery(
+        token,
+        store=store,
+        recovery_store=recovery_store,
+        persistence=persistence,
+    )
+    assert ok is True
+    saved = store.load()
+    assert saved is not None
+    assert len(saved.lockout_recovery_used_at) == 1
+    print("  [ok] recovery uses expire after the rolling 24-hour window")
+
+
+def test_unlimited_recovery_allows_repeated_uses(tmp: Path) -> None:
+    apply_recovery, available, persistence, recovery_store, State, store, hash_password = _fresh(tmp)
+    store.save(State(
+        password_hash=hash_password("password"),
+        enabled=True,
+        lockout_recovery_uses_per_24h=0,
+    ))
+    token = recovery_store.generate()
+
+    for index in range(3):
+        persistence.start(30 * 60, f"TEST-{index}", shutdown_on_done=True)
+        ok, _, _ = apply_recovery(
+            token,
+            store=store,
+            recovery_store=recovery_store,
+            persistence=persistence,
+        )
+        assert ok is True
+        assert available(store) is True
+    print("  [ok] unlimited recovery permits repeated uses")
+
+
 def main() -> int:
     tests = [
         test_lockout_recovery_available_by_default,
         test_wrong_recovery_code_does_not_change_lockout,
         test_recovery_code_replaces_lockout_timer_and_skips_shutdown,
+        test_default_recovery_is_immediate_and_only_once_per_24_hours,
+        test_expired_recovery_use_rolls_out_of_window,
+        test_unlimited_recovery_allows_repeated_uses,
     ]
     for fn in tests:
         print(f"\n{fn.__name__}")

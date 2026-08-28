@@ -12,14 +12,15 @@ Schema history:
   v9: added recovery_unlock_after (Optional[str] ISO datetime).
   v10: added recovery cooldown settings.
   v11: collapsed detection/anime modes to single defaults; added shutdown_after_lockout.
+  v12: added rolling 24-hour lockout recovery usage limits.
 """
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 LOCKOUT_DURATION_MIN = 1
 LOCKOUT_DURATION_MAX = 60
@@ -29,7 +30,12 @@ RECOVERY_COOLDOWN_MIN = 1
 RECOVERY_COOLDOWN_MAX = 60
 RECOVERY_UNLOCK_DELAY_DEFAULT = 15
 LOCKOUT_RECOVERY_ENABLED_DEFAULT = True
-LOCKOUT_RECOVERY_DELAY_DEFAULT = 5
+LOCKOUT_RECOVERY_COOLDOWN_MIN = 0
+LOCKOUT_RECOVERY_DELAY_DEFAULT = 0
+LOCKOUT_RECOVERY_USES_DEFAULT = 1
+LOCKOUT_RECOVERY_USES_UNLIMITED = 0
+LOCKOUT_RECOVERY_USES_ALLOWED = (0, 1, 2, 3, 4)
+LOCKOUT_RECOVERY_WINDOW_HOURS = 24
 SHUTDOWN_AFTER_LOCKOUT_DEFAULT = False
 
 DETECTION_SENSITIVITY_DEFAULT = "balanced"
@@ -47,6 +53,15 @@ def _clamp_duration(n: int) -> int:
 
 def _clamp_recovery_cooldown(n: int) -> int:
     return max(RECOVERY_COOLDOWN_MIN, min(RECOVERY_COOLDOWN_MAX, int(n)))
+
+
+def _clamp_lockout_recovery_cooldown(n: int) -> int:
+    return max(LOCKOUT_RECOVERY_COOLDOWN_MIN, min(RECOVERY_COOLDOWN_MAX, int(n)))
+
+
+def _normalize_lockout_recovery_uses(n: int) -> int:
+    value = int(n)
+    return value if value in LOCKOUT_RECOVERY_USES_ALLOWED else LOCKOUT_RECOVERY_USES_DEFAULT
 
 
 def normalize_detection_sensitivity(value: object) -> str:
@@ -70,6 +85,8 @@ class State:
     recovery_unlock_delay_minutes: int = RECOVERY_UNLOCK_DELAY_DEFAULT
     lockout_recovery_enabled: bool = LOCKOUT_RECOVERY_ENABLED_DEFAULT
     lockout_recovery_delay_minutes: int = LOCKOUT_RECOVERY_DELAY_DEFAULT
+    lockout_recovery_uses_per_24h: int = LOCKOUT_RECOVERY_USES_DEFAULT
+    lockout_recovery_used_at: list[str] = field(default_factory=list)
     shutdown_after_lockout: bool = SHUTDOWN_AFTER_LOCKOUT_DEFAULT
     created_at: str = field(default_factory=_now_iso)
     schema_version: int = SCHEMA_VERSION
@@ -80,7 +97,13 @@ class State:
         self.anime_detection_mode = normalize_anime_detection_mode(self.anime_detection_mode)
         self.recovery_unlock_delay_minutes = _clamp_recovery_cooldown(self.recovery_unlock_delay_minutes)
         self.lockout_recovery_enabled = bool(self.lockout_recovery_enabled)
-        self.lockout_recovery_delay_minutes = _clamp_recovery_cooldown(self.lockout_recovery_delay_minutes)
+        self.lockout_recovery_delay_minutes = _clamp_lockout_recovery_cooldown(
+            self.lockout_recovery_delay_minutes
+        )
+        self.lockout_recovery_uses_per_24h = _normalize_lockout_recovery_uses(
+            self.lockout_recovery_uses_per_24h
+        )
+        self.lockout_recovery_used_at = [str(value) for value in self.lockout_recovery_used_at]
         self.shutdown_after_lockout = bool(self.shutdown_after_lockout)
 
     def to_dict(self) -> dict:
@@ -238,7 +261,7 @@ class State:
                 created_at=d.get("created_at", _now_iso()),
                 schema_version=SCHEMA_VERSION,
             )
-        if version != SCHEMA_VERSION:
+        if version not in (11, SCHEMA_VERSION):
             raise ValueError(f"Unsupported state schema_version {version}")
         return cls(
             password_hash=d["password_hash"],
@@ -260,9 +283,13 @@ class State:
             lockout_recovery_delay_minutes=int(
                 d.get("lockout_recovery_delay_minutes", LOCKOUT_RECOVERY_DELAY_DEFAULT)
             ),
+            lockout_recovery_uses_per_24h=int(
+                d.get("lockout_recovery_uses_per_24h", LOCKOUT_RECOVERY_USES_DEFAULT)
+            ),
+            lockout_recovery_used_at=list(d.get("lockout_recovery_used_at", [])),
             shutdown_after_lockout=bool(d.get("shutdown_after_lockout", SHUTDOWN_AFTER_LOCKOUT_DEFAULT)),
             created_at=d.get("created_at", _now_iso()),
-            schema_version=version,
+            schema_version=SCHEMA_VERSION,
         )
 
     def lockout_duration_seconds(self) -> int:
@@ -273,6 +300,32 @@ class State:
 
     def lockout_recovery_delay_seconds(self) -> int:
         return self.lockout_recovery_delay_minutes * 60
+
+    def recent_lockout_recovery_uses(self, now: Optional[datetime] = None) -> list[str]:
+        current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+        cutoff = current - timedelta(hours=LOCKOUT_RECOVERY_WINDOW_HOURS)
+        recent: list[str] = []
+        for raw in self.lockout_recovery_used_at:
+            try:
+                used_at = datetime.fromisoformat(raw)
+                if used_at.tzinfo is None:
+                    used_at = used_at.replace(tzinfo=timezone.utc)
+                used_at = used_at.astimezone(timezone.utc)
+            except (TypeError, ValueError):
+                continue
+            if used_at > cutoff:
+                recent.append(used_at.isoformat(timespec="seconds"))
+        return recent
+
+    def lockout_recovery_limit_available(self, now: Optional[datetime] = None) -> bool:
+        if self.lockout_recovery_uses_per_24h == LOCKOUT_RECOVERY_USES_UNLIMITED:
+            return True
+        return len(self.recent_lockout_recovery_uses(now)) < self.lockout_recovery_uses_per_24h
+
+    def record_lockout_recovery_use(self, now: Optional[datetime] = None) -> None:
+        current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+        self.lockout_recovery_used_at = self.recent_lockout_recovery_uses(current)
+        self.lockout_recovery_used_at.append(current.isoformat(timespec="seconds"))
 
     def committed_until_dt(self) -> Optional[datetime]:
         if not self.committed_until:

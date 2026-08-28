@@ -20,8 +20,11 @@ from brake.state.recovery_unlock import apply_due_recovery_unlock, cancel_recove
 from brake.state.schema import (
     LOCKOUT_DURATION_MAX,
     LOCKOUT_DURATION_MIN,
+    LOCKOUT_RECOVERY_COOLDOWN_MIN,
     LOCKOUT_RECOVERY_ENABLED_DEFAULT,
     LOCKOUT_RECOVERY_DELAY_DEFAULT,
+    LOCKOUT_RECOVERY_USES_ALLOWED,
+    LOCKOUT_RECOVERY_USES_DEFAULT,
     RECOVERY_COOLDOWN_MAX,
     RECOVERY_COOLDOWN_MIN,
     SHUTDOWN_AFTER_LOCKOUT_DEFAULT,
@@ -185,6 +188,7 @@ class IPCServer(threading.Thread):
                     int(req.get("recovery_unlock_delay_minutes", 15)),
                     bool(req.get("lockout_recovery_enabled", LOCKOUT_RECOVERY_ENABLED_DEFAULT)),
                     int(req.get("lockout_recovery_delay_minutes", LOCKOUT_RECOVERY_DELAY_DEFAULT)),
+                    int(req.get("lockout_recovery_uses_per_24h", LOCKOUT_RECOVERY_USES_DEFAULT)),
                     str(req.get("password", "") or ""),
                 )
             if cmd == Command.CANCEL_RECOVERY_UNLOCK.value:
@@ -233,6 +237,7 @@ class IPCServer(threading.Thread):
             "recovery_unlock_delay_minutes": 15,
             "lockout_recovery_enabled": LOCKOUT_RECOVERY_ENABLED_DEFAULT,
             "lockout_recovery_delay_minutes": LOCKOUT_RECOVERY_DELAY_DEFAULT,
+            "lockout_recovery_uses_per_24h": LOCKOUT_RECOVERY_USES_DEFAULT,
             "shutdown_after_lockout": SHUTDOWN_AFTER_LOCKOUT_DEFAULT,
         }
 
@@ -258,6 +263,7 @@ class IPCServer(threading.Thread):
             "recovery_unlock_delay_minutes": s.recovery_unlock_delay_minutes,
             "lockout_recovery_enabled": s.lockout_recovery_enabled,
             "lockout_recovery_delay_minutes": s.lockout_recovery_delay_minutes,
+            "lockout_recovery_uses_per_24h": s.lockout_recovery_uses_per_24h,
             "shutdown_after_lockout": s.shutdown_after_lockout,
         }}
 
@@ -403,6 +409,7 @@ class IPCServer(threading.Thread):
         recovery_unlock_delay_minutes: int,
         lockout_recovery_enabled: bool,
         lockout_recovery_delay_minutes: int,
+        lockout_recovery_uses_per_24h: int,
         password: str = "",
     ) -> Dict[str, Any]:
         s = self._state()
@@ -410,7 +417,8 @@ class IPCServer(threading.Thread):
             return {"ok": False, "error": "not_initialized"}
         if not (
             RECOVERY_COOLDOWN_MIN <= recovery_unlock_delay_minutes <= RECOVERY_COOLDOWN_MAX
-            and RECOVERY_COOLDOWN_MIN <= lockout_recovery_delay_minutes <= RECOVERY_COOLDOWN_MAX
+            and LOCKOUT_RECOVERY_COOLDOWN_MIN <= lockout_recovery_delay_minutes <= RECOVERY_COOLDOWN_MAX
+            and lockout_recovery_uses_per_24h in LOCKOUT_RECOVERY_USES_ALLOWED
         ):
             return {"ok": False, "error": "recovery_cooldown_out_of_range"}
 
@@ -419,6 +427,11 @@ class IPCServer(threading.Thread):
             recovery_unlock_delay_minutes < s.recovery_unlock_delay_minutes
             or (lockout_recovery_enabled and not s.lockout_recovery_enabled)
             or lockout_recovery_delay_minutes < s.lockout_recovery_delay_minutes
+            or (lockout_recovery_uses_per_24h == 0 and s.lockout_recovery_uses_per_24h != 0)
+            or (
+                s.lockout_recovery_uses_per_24h != 0
+                and lockout_recovery_uses_per_24h > s.lockout_recovery_uses_per_24h
+            )
         )
         if s.commitment_active() and looser:
             return {"ok": False, "error": "commitment_blocks_loosening_recovery"}
@@ -430,6 +443,7 @@ class IPCServer(threading.Thread):
         s.recovery_unlock_delay_minutes = recovery_unlock_delay_minutes
         s.lockout_recovery_enabled = lockout_recovery_enabled
         s.lockout_recovery_delay_minutes = lockout_recovery_delay_minutes
+        s.lockout_recovery_uses_per_24h = lockout_recovery_uses_per_24h
         self.store.save(s)
         return {"ok": True}
 

@@ -288,6 +288,7 @@ def _human_recovery_error(error: str) -> str:
         "wrong_recovery_code": "That recovery code is not correct.",
         "recovery_unavailable": "Recovery code verification is unavailable.",
         "lockout_recovery_disabled": "Emergency release is not enabled for lockouts.",
+        "lockout_recovery_limit_reached": "Your lockout recovery limit has been reached for the last 24 hours.",
         "no_active_lockout": "This lockout is no longer active.",
         "lockout_unavailable": "The lockout record could not be updated.",
         "state_unavailable": "Brake settings could not be verified.",

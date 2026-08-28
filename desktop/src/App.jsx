@@ -36,19 +36,41 @@ const fallbackStatus = {
   recoveryUnlockPending: false,
   recoveryUnlockDelayMinutes: 15,
   lockoutRecoveryEnabled: true,
-  lockoutRecoveryDelayMinutes: 5,
+  lockoutRecoveryDelayMinutes: 0,
+  lockoutRecoveryUsesPer24h: 1,
   shutdownAfterLockout: false
 };
 const MIN_PASSWORD_LENGTH = 6;
 const INCREASE_CONFIRM_GRACE_MS = 45000;
 const RECOVERY_COOLDOWN_MIN = 1;
 const RECOVERY_COOLDOWN_MAX = 60;
+const LOCKOUT_RECOVERY_COOLDOWN_MIN = 0;
+const LOCKOUT_RECOVERY_USES_DEFAULT = 1;
+const LOCKOUT_RECOVERY_USES_ALLOWED = [1, 2, 3, 4, 0];
 
 function clampRecoveryMinutes(value) {
   return Math.max(
     RECOVERY_COOLDOWN_MIN,
     Math.min(RECOVERY_COOLDOWN_MAX, Number(value) || 15)
   );
+}
+
+function clampLockoutRecoveryMinutes(value) {
+  const minutes = Number(value);
+  return Math.max(
+    LOCKOUT_RECOVERY_COOLDOWN_MIN,
+    Math.min(RECOVERY_COOLDOWN_MAX, Number.isFinite(minutes) ? minutes : 0)
+  );
+}
+
+function normalizeRecoveryUses(value) {
+  const uses = Number(value);
+  return LOCKOUT_RECOVERY_USES_ALLOWED.includes(uses) ? uses : LOCKOUT_RECOVERY_USES_DEFAULT;
+}
+
+function recoveryUsesRank(value) {
+  const uses = normalizeRecoveryUses(value);
+  return uses === 0 ? Number.POSITIVE_INFINITY : uses;
 }
 
 function BrakeMark({ tone = "gold" }) {
@@ -263,14 +285,15 @@ function SettingRow({ title, description, aside }) {
   );
 }
 
-function MinuteStepper({ value, onChange, disabled = false, ariaLabel }) {
-  const minutes = clampRecoveryMinutes(value);
+function MinuteStepper({ value, onChange, disabled = false, ariaLabel, allowZero = false }) {
+  const minimum = allowZero ? LOCKOUT_RECOVERY_COOLDOWN_MIN : RECOVERY_COOLDOWN_MIN;
+  const minutes = allowZero ? clampLockoutRecoveryMinutes(value) : clampRecoveryMinutes(value);
   return (
     <div className="stepper-control">
       <button
         type="button"
         aria-label={`Decrease ${ariaLabel}`}
-        disabled={disabled || minutes <= RECOVERY_COOLDOWN_MIN}
+        disabled={disabled || minutes <= minimum}
         onClick={() => onChange(minutes - 1)}
       >
         <Minus size={14} />
@@ -288,6 +311,24 @@ function MinuteStepper({ value, onChange, disabled = false, ariaLabel }) {
         <Plus size={14} />
       </button>
     </div>
+  );
+}
+
+function RecoveryUsesSelect({ value, onChange, disabled = false }) {
+  return (
+    <select
+      className="setting-select"
+      aria-label="Lockout recovery uses allowed every 24 hours"
+      value={normalizeRecoveryUses(value)}
+      disabled={disabled}
+      onChange={(event) => onChange(Number(event.target.value))}
+    >
+      <option value={1}>1</option>
+      <option value={2}>2</option>
+      <option value={3}>3</option>
+      <option value={4}>4</option>
+      <option value={0}>∞</option>
+    </select>
   );
 }
 
@@ -795,7 +836,8 @@ export default function App() {
   const recoverySnapshot = (source) => ({
     recoveryUnlockDelayMinutes: clampRecoveryMinutes(source?.recoveryUnlockDelayMinutes),
     lockoutRecoveryEnabled: Boolean(source?.lockoutRecoveryEnabled ?? fallbackStatus.lockoutRecoveryEnabled),
-    lockoutRecoveryDelayMinutes: clampRecoveryMinutes(source?.lockoutRecoveryDelayMinutes)
+    lockoutRecoveryDelayMinutes: clampLockoutRecoveryMinutes(source?.lockoutRecoveryDelayMinutes),
+    lockoutRecoveryUsesPer24h: normalizeRecoveryUses(source?.lockoutRecoveryUsesPer24h)
   });
   const mergeBackendStatus = (data) => {
     setStatus((current) => {
@@ -1073,19 +1115,24 @@ export default function App() {
       overrides.recoveryUnlockDelayMinutes ?? base.recoveryUnlockDelayMinutes
     ),
     lockoutRecoveryEnabled: Boolean(overrides.lockoutRecoveryEnabled ?? base.lockoutRecoveryEnabled),
-    lockoutRecoveryDelayMinutes: clampRecoveryMinutes(
+    lockoutRecoveryDelayMinutes: clampLockoutRecoveryMinutes(
       overrides.lockoutRecoveryDelayMinutes ?? base.lockoutRecoveryDelayMinutes
+    ),
+    lockoutRecoveryUsesPer24h: normalizeRecoveryUses(
+      overrides.lockoutRecoveryUsesPer24h ?? base.lockoutRecoveryUsesPer24h
     )
   });
   const recoverySettingsLooser = (next, base = recoveryBaseline.current || recoverySnapshot(status)) => (
     next.recoveryUnlockDelayMinutes < Number(base.recoveryUnlockDelayMinutes)
     || (next.lockoutRecoveryEnabled && !base.lockoutRecoveryEnabled)
     || next.lockoutRecoveryDelayMinutes < Number(base.lockoutRecoveryDelayMinutes)
+    || recoveryUsesRank(next.lockoutRecoveryUsesPer24h) > recoveryUsesRank(base.lockoutRecoveryUsesPer24h)
   );
   const recoverySettingsStricter = (next, base = recoveryBaseline.current || recoverySnapshot(status)) => (
     next.recoveryUnlockDelayMinutes > Number(base.recoveryUnlockDelayMinutes)
     || (!next.lockoutRecoveryEnabled && base.lockoutRecoveryEnabled)
     || next.lockoutRecoveryDelayMinutes > Number(base.lockoutRecoveryDelayMinutes)
+    || recoveryUsesRank(next.lockoutRecoveryUsesPer24h) < recoveryUsesRank(base.lockoutRecoveryUsesPer24h)
   );
   const applyRecoverySettingsResponse = (response, fallback) => {
     pendingRecovery.current = false;
@@ -1131,7 +1178,8 @@ export default function App() {
     const unchanged =
       normalized.recoveryUnlockDelayMinutes === Number(recoveryDraft.current?.recoveryUnlockDelayMinutes ?? status.recoveryUnlockDelayMinutes)
       && normalized.lockoutRecoveryEnabled === Boolean(recoveryDraft.current?.lockoutRecoveryEnabled ?? status.lockoutRecoveryEnabled)
-      && normalized.lockoutRecoveryDelayMinutes === Number(recoveryDraft.current?.lockoutRecoveryDelayMinutes ?? status.lockoutRecoveryDelayMinutes);
+      && normalized.lockoutRecoveryDelayMinutes === Number(recoveryDraft.current?.lockoutRecoveryDelayMinutes ?? status.lockoutRecoveryDelayMinutes)
+      && normalized.lockoutRecoveryUsesPer24h === Number(recoveryDraft.current?.lockoutRecoveryUsesPer24h ?? status.lockoutRecoveryUsesPer24h);
     if (unchanged) return;
     const looser = recoverySettingsLooser(normalized);
     if (looser) {
@@ -1384,7 +1432,19 @@ export default function App() {
                       ariaLabel="lockout recovery cooldown"
                       disabled={status.failSecure || !status.lockoutRecoveryEnabled}
                       value={status.lockoutRecoveryDelayMinutes}
+                      allowZero
                       onChange={(value) => requestRecoverySettings({ lockoutRecoveryDelayMinutes: value }, { debounce: true })}
+                    />
+                  }
+                />
+                <SettingRow
+                  title="Recovery uses every 24 hours"
+                  description="How many successful lockout recoveries are allowed in a rolling 24-hour window."
+                  aside={
+                    <RecoveryUsesSelect
+                      disabled={status.failSecure || !status.lockoutRecoveryEnabled}
+                      value={status.lockoutRecoveryUsesPer24h}
+                      onChange={(value) => requestRecoverySettings({ lockoutRecoveryUsesPer24h: value })}
                     />
                   }
                 />
@@ -1515,7 +1575,7 @@ function humanError(error) {
     commitment_must_be_future: "Commitment must end in the future.",
     invalid_commitment_until: "That commitment time is not valid.",
     invalid_anime_mode: "That illustrated detection setting is not valid.",
-    recovery_cooldown_out_of_range: "Recovery cooldown must be between 1 and 60 minutes.",
+    recovery_cooldown_out_of_range: "The selected recovery settings are outside the allowed range.",
     not_initialized: "Brake has not been set up yet.",
     password_required: "Enter your password to make this less strict.",
     permission_denied: "Brake could not write settings. Restart Brake or run the latest BrakeSetup.exe again.",

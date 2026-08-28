@@ -26,7 +26,11 @@ def lockout_recovery_available(store: Optional[StateStore] = None) -> bool:
     except Exception as e:
         _log.warning("Lockout recovery unavailable because state could not be read: %s", e)
         return False
-    return bool(state and state.lockout_recovery_enabled)
+    return bool(
+        state
+        and state.lockout_recovery_enabled
+        and state.lockout_recovery_limit_available()
+    )
 
 
 def apply_lockout_recovery(
@@ -40,8 +44,9 @@ def apply_lockout_recovery(
 
     Returns (ok, message_or_error, new_end_at).
     """
+    state_store = store or StateStore()
     try:
-        state = (store or StateStore()).load()
+        state = state_store.load()
     except (StateMissingError, StateTamperedError) as e:
         _log.warning("Lockout recovery rejected because state could not be trusted: %s", e)
         return False, "state_unavailable", None
@@ -53,6 +58,8 @@ def apply_lockout_recovery(
         return False, "not_initialized", None
     if not state.lockout_recovery_enabled:
         return False, "lockout_recovery_disabled", None
+    if not state.lockout_recovery_limit_available():
+        return False, "lockout_recovery_limit_reached", None
 
     try:
         if not (recovery_store or RecoveryStore()).verify(recovery_code):
@@ -60,8 +67,14 @@ def apply_lockout_recovery(
     except RecoveryTamperedError:
         return False, "recovery_unavailable", None
 
+    lockout_persistence = persistence or LockoutPersistence()
     try:
-        record = (persistence or LockoutPersistence()).replace_active(
+        active = lockout_persistence.resume()
+        if active is None or active.is_expired():
+            return False, "no_active_lockout", None
+        state.record_lockout_recovery_use()
+        state_store.save(state)
+        record = lockout_persistence.replace_active(
             state.lockout_recovery_delay_seconds(),
             message=LOCKOUT_RECOVERY_MESSAGE,
             shutdown_on_done=False,

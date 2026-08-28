@@ -23,8 +23,11 @@ from brake.state.crypto import MIN_PASSWORD_LENGTH, hash_password, is_backdoor, 
 from brake.state.recovery import RecoveryStore, RecoveryTamperedError
 from brake.state.recovery_unlock import apply_due_recovery_unlock, cancel_recovery_unlock, schedule_recovery_unlock
 from brake.state.schema import (
+    LOCKOUT_RECOVERY_COOLDOWN_MIN,
     LOCKOUT_RECOVERY_ENABLED_DEFAULT,
     LOCKOUT_RECOVERY_DELAY_DEFAULT,
+    LOCKOUT_RECOVERY_USES_ALLOWED,
+    LOCKOUT_RECOVERY_USES_DEFAULT,
     RECOVERY_COOLDOWN_MAX,
     RECOVERY_COOLDOWN_MIN,
     SHUTDOWN_AFTER_LOCKOUT_DEFAULT,
@@ -110,6 +113,7 @@ class Controller:
             "recovery_unlock_delay_minutes": 15,
             "lockout_recovery_enabled": LOCKOUT_RECOVERY_ENABLED_DEFAULT,
             "lockout_recovery_delay_minutes": LOCKOUT_RECOVERY_DELAY_DEFAULT,
+            "lockout_recovery_uses_per_24h": LOCKOUT_RECOVERY_USES_DEFAULT,
             "shutdown_after_lockout": SHUTDOWN_AFTER_LOCKOUT_DEFAULT,
         }
 
@@ -130,6 +134,7 @@ class Controller:
             "recovery_unlock_delay_minutes": s.recovery_unlock_delay_minutes,
             "lockout_recovery_enabled": s.lockout_recovery_enabled,
             "lockout_recovery_delay_minutes": s.lockout_recovery_delay_minutes,
+            "lockout_recovery_uses_per_24h": s.lockout_recovery_uses_per_24h,
             "shutdown_after_lockout": s.shutdown_after_lockout,
         }
 
@@ -399,6 +404,7 @@ class Controller:
         recovery_unlock_delay_minutes: int,
         lockout_recovery_enabled: bool,
         lockout_recovery_delay_minutes: int,
+        lockout_recovery_uses_per_24h: int = LOCKOUT_RECOVERY_USES_DEFAULT,
         password: str = "",
     ) -> Tuple[bool, str]:
         if self.service_up():
@@ -407,6 +413,7 @@ class Controller:
                     recovery_unlock_delay_minutes,
                     lockout_recovery_enabled,
                     lockout_recovery_delay_minutes,
+                    lockout_recovery_uses_per_24h,
                     password=password,
                 )
                 return bool(r.get("ok")), r.get("error", "")
@@ -420,9 +427,11 @@ class Controller:
             return False, "not_initialized"
         recovery_unlock_delay_minutes = int(recovery_unlock_delay_minutes)
         lockout_recovery_delay_minutes = int(lockout_recovery_delay_minutes)
+        lockout_recovery_uses_per_24h = int(lockout_recovery_uses_per_24h)
         if not (
             RECOVERY_COOLDOWN_MIN <= recovery_unlock_delay_minutes <= RECOVERY_COOLDOWN_MAX
-            and RECOVERY_COOLDOWN_MIN <= lockout_recovery_delay_minutes <= RECOVERY_COOLDOWN_MAX
+            and LOCKOUT_RECOVERY_COOLDOWN_MIN <= lockout_recovery_delay_minutes <= RECOVERY_COOLDOWN_MAX
+            and lockout_recovery_uses_per_24h in LOCKOUT_RECOVERY_USES_ALLOWED
         ):
             return False, "recovery_cooldown_out_of_range"
 
@@ -431,6 +440,11 @@ class Controller:
             recovery_unlock_delay_minutes < s.recovery_unlock_delay_minutes
             or (lockout_recovery_enabled and not s.lockout_recovery_enabled)
             or lockout_recovery_delay_minutes < s.lockout_recovery_delay_minutes
+            or (lockout_recovery_uses_per_24h == 0 and s.lockout_recovery_uses_per_24h != 0)
+            or (
+                s.lockout_recovery_uses_per_24h != 0
+                and lockout_recovery_uses_per_24h > s.lockout_recovery_uses_per_24h
+            )
         )
         if s.commitment_active() and looser:
             return False, "commitment_blocks_loosening_recovery"
@@ -442,5 +456,6 @@ class Controller:
         s.recovery_unlock_delay_minutes = recovery_unlock_delay_minutes
         s.lockout_recovery_enabled = lockout_recovery_enabled
         s.lockout_recovery_delay_minutes = lockout_recovery_delay_minutes
+        s.lockout_recovery_uses_per_24h = lockout_recovery_uses_per_24h
         self.store.save(s)
         return True, ""

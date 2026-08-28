@@ -39,7 +39,7 @@ It can reset your password immediately. It can also start an emergency cooldown 
 
 Do not keep the recovery code somewhere easy to reach on the same computer. Write it on paper, take a photo on your phone, or give it to someone you trust. If you want the strongest commitment, you can choose not to copy it, but a forgotten password may require a full reset.
 
-Advanced also has a lockout recovery setting. When it is on, a small emergency option appears during a full lockout. Entering the recovery code there starts a separate lockout recovery cooldown, skips shutdown at the end, and leaves protection on.
+Advanced also has lockout recovery settings. When recovery is available, a small emergency option appears during a full lockout. Entering the recovery code skips shutdown and leaves protection on. The lockout recovery cooldown defaults to 0 minutes, and recovery defaults to one use in a rolling 24-hour window. You can select 1, 2, 3, 4, or unlimited uses.
 
 ## Illustrated content
 

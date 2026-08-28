@@ -292,7 +292,8 @@ app.whenReady().then(async () => {
     queuedBackend("set-recovery-settings", [
       "--recovery-unlock-delay", String(payload?.recoveryUnlockDelayMinutes || ""),
       "--lockout-recovery-enabled", payload?.lockoutRecoveryEnabled ? "true" : "false",
-      "--lockout-recovery-delay", String(payload?.lockoutRecoveryDelayMinutes || ""),
+      "--lockout-recovery-delay", String(payload?.lockoutRecoveryDelayMinutes ?? ""),
+      "--lockout-recovery-uses", String(payload?.lockoutRecoveryUsesPer24h ?? ""),
       "--password", String(payload?.password || "")
     ])
   ));

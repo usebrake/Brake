@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.1.0-beta",
+    [string]$Version = "0.1.4-beta",
     [switch]$SkipInstallPyInstaller,
     [switch]$Resume
 )

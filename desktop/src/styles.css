@@ -504,6 +504,36 @@ button {
   background: rgba(226, 121, 107, 0.22);
 }
 
+.setting-select {
+  width: 76px;
+  height: 36px;
+  padding: 0 10px;
+  color: var(--fg-1);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  outline: 0;
+  cursor: pointer;
+  text-align: center;
+  font-family: "Geist Mono", "Consolas", monospace;
+}
+
+.setting-select:focus {
+  border-color: var(--gold-line);
+  box-shadow: 0 0 0 3px var(--gold-soft);
+}
+
+.setting-select:disabled {
+  color: var(--fg-4);
+  border-color: var(--border-faint);
+  cursor: not-allowed;
+}
+
+.setting-select option {
+  color: var(--fg-1);
+  background: var(--surface-2);
+}
+
 .stepper-control {
   display: inline-flex;
   align-items: center;

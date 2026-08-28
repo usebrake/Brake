@@ -108,6 +108,31 @@ def test_commitment_blocks_recovery_loosening_but_allows_stricter(tmp: Path) -> 
     print("  [ok] commitment blocks easier recovery but allows stricter settings")
 
 
+def test_recovery_use_limit_requires_password_to_loosen(tmp: Path) -> None:
+    Controller, State, StateStore, hash_password = _fresh(tmp)
+    store = StateStore()
+    store.save(State(
+        password_hash=hash_password("password"),
+        enabled=True,
+        lockout_recovery_delay_minutes=0,
+        lockout_recovery_uses_per_24h=1,
+    ))
+
+    controller = Controller(allow_direct_writes=True)
+    controller.service_up = lambda: False  # type: ignore[method-assign]
+
+    ok, err = controller.set_recovery_settings(15, True, 0, 2)
+    assert not ok
+    assert err == "password_required"
+
+    ok, err = controller.set_recovery_settings(15, True, 0, 2, password="password")
+    assert ok, err
+    saved = store.load()
+    assert saved is not None
+    assert saved.lockout_recovery_uses_per_24h == 2
+    print("  [ok] increasing recovery uses requires the protection password")
+
+
 def test_shutdown_toggle_requires_password_to_loosen_when_enabled(tmp: Path) -> None:
     Controller, State, StateStore, hash_password = _fresh(tmp)
     store = StateStore()
@@ -250,6 +275,7 @@ if __name__ == "__main__":
     test_dev_controller_can_direct_write_without_service(base / "dev")
     test_recovery_settings_require_password_to_loosen_when_enabled(base / "recovery-password")
     test_commitment_blocks_recovery_loosening_but_allows_stricter(base / "recovery-commitment")
+    test_recovery_use_limit_requires_password_to_loosen(base / "recovery-use-password")
     test_shutdown_toggle_requires_password_to_loosen_when_enabled(base / "shutdown-password")
     test_commitment_blocks_turning_shutdown_off_but_allows_on(base / "shutdown-commitment")
     test_corrupt_state_status_is_fail_secure_not_off(base / "corrupt-status")

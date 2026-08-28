@@ -129,6 +129,7 @@ class IPCClient:
         recovery_unlock_delay_minutes: int,
         lockout_recovery_enabled: bool,
         lockout_recovery_delay_minutes: int,
+        lockout_recovery_uses_per_24h: int,
         password: str = "",
     ) -> Dict[str, Any]:
         return self.call(
@@ -136,5 +137,6 @@ class IPCClient:
             recovery_unlock_delay_minutes=int(recovery_unlock_delay_minutes),
             lockout_recovery_enabled=bool(lockout_recovery_enabled),
             lockout_recovery_delay_minutes=int(lockout_recovery_delay_minutes),
+            lockout_recovery_uses_per_24h=int(lockout_recovery_uses_per_24h),
             password=password,
         )

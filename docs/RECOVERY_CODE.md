@@ -18,9 +18,11 @@ Without a cooldown, the recovery code would become an easy bypass. The delay giv
 
 ## Recovery during a lockout
 
-Brake can optionally allow the recovery code during a full lockout. This is off by default. If you turn it on in Advanced, the lockout screen shows a small emergency option.
+Brake allows the recovery code during a full lockout by default. The lockout screen shows a small emergency option while recovery is enabled and the rolling usage limit has not been reached.
 
-When the recovery code is accepted during a lockout, Brake replaces the remaining lockout timer with the lockout recovery cooldown and skips shutdown at the end. Protection and any active commitment stay on.
+When the recovery code is accepted during a lockout, Brake replaces the remaining lockout timer with the lockout recovery cooldown and skips shutdown at the end. Protection and any active commitment stay on. The default lockout recovery cooldown is 0 minutes, so the lockout closes immediately and scanning resumes after the short closing window.
+
+By default, lockout recovery can be used once in a rolling 24-hour window. Advanced settings let you choose 1, 2, 3, 4, or unlimited uses. Once the limit is reached, later lockouts do not show the emergency option until an earlier use falls outside the 24-hour window.
 
 ## Where to keep it
 
