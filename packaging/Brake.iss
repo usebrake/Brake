@@ -37,6 +37,12 @@ CloseApplications=no
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
+[InstallDelete]
+; _internal is generated packaging output and contains no Brake user data.
+; Clear it during upgrades so removed or incompatible DLLs cannot survive
+; from an older installation and override the replacement bundle.
+Type: filesandordirs; Name: "{app}\_internal"
+
 [Icons]
 Name: "{group}\\Brake"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\resources\app\src\assets\brake-ring.ico"; AppUserModelID: "com.usebrake.Brake"
 Name: "{commondesktop}\\Brake"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\resources\app\src\assets\brake-ring.ico"; AppUserModelID: "com.usebrake.Brake"; Tasks: desktopicon

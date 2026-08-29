@@ -1,7 +1,9 @@
 param(
     [string]$Version = "0.1.4-beta",
     [switch]$SkipInstallPyInstaller,
-    [switch]$Resume
+    [Alias("Resume")]
+    [switch]$Incremental,
+    [string[]]$Components = @()
 )
 
 $ErrorActionPreference = "Stop"
@@ -10,6 +12,33 @@ $distRoot = Join-Path $repoRoot "dist"
 $workRoot = Join-Path $repoRoot "build\pyinstaller"
 $specRoot = Join-Path $repoRoot "build\spec"
 $bundle = Join-Path $distRoot "brake"
+$pythonExe = (Get-Command python -ErrorAction Stop).Source
+$foreignBuildPathPattern = '(?i)[\\/](?:\.cache[\\/]codex-runtimes|\.codex[\\/]plugins[\\/]cache)[\\/]'
+$allComponents = @(
+    "BrakeAgent",
+    "BrakeBoot",
+    "BrakeBridge",
+    "BrakeLockout",
+    "BrakeUninstallGuard",
+    "BrakeService",
+    "BrakeWatchdog"
+)
+$Components = @(
+    $Components |
+        ForEach-Object { $_ -split "," } |
+        ForEach-Object { $_.Trim() } |
+        Where-Object { $_ }
+)
+
+if ($Components.Count -gt 0) {
+    $unknownComponents = @($Components | Where-Object { $_ -notin $allComponents })
+    if ($unknownComponents.Count -gt 0) {
+        throw "Unknown component(s): $($unknownComponents -join ', '). Valid components: $($allComponents -join ', ')"
+    }
+    $selectedComponents = @($Components | Select-Object -Unique)
+} else {
+    $selectedComponents = $allComponents
+}
 
 Write-Host "Repo: $repoRoot"
 Write-Host "Bundle: $bundle"
@@ -19,8 +48,22 @@ if (-not $SkipInstallPyInstaller) {
     python -m pip install --upgrade pyinstaller
 }
 
-if ((Test-Path $bundle) -and -not $Resume) {
-    Remove-Item -LiteralPath $bundle -Recurse -Force
+if ($Incremental) {
+    if (-not (Test-Path $bundle)) {
+        throw "Incremental build requires an existing bundle at $bundle. Run a clean full build first."
+    }
+} else {
+    foreach ($path in @($bundle, $workRoot, $specRoot)) {
+        if (Test-Path $path) {
+            Remove-Item -LiteralPath $path -Recurse -Force
+        }
+    }
+    foreach ($name in $allComponents) {
+        $componentOutput = Join-Path $distRoot $name
+        if (Test-Path $componentOutput) {
+            Remove-Item -LiteralPath $componentOutput -Recurse -Force
+        }
+    }
 }
 New-Item -ItemType Directory -Force -Path $bundle, $workRoot, $specRoot | Out-Null
 
@@ -87,11 +130,6 @@ function Build-App(
     [switch]$NeedsAnimeExport
 ) {
     $outDir = Join-Path $distRoot $name
-    $outExe = Join-Path $outDir "$name.exe"
-    if ($Resume -and (Test-Path $outExe)) {
-        Write-Host "Skipping $name; existing output found."
-        return
-    }
     $configSrc = Join-Path $repoRoot "config"
     $assetsSrc = Join-Path $repoRoot "brake\\gui\assets"
     $iconSrc = Join-Path $repoRoot "brake\\gui\assets\brake.ico"
@@ -101,7 +139,6 @@ function Build-App(
     $args = @(
         "-m", "PyInstaller",
         "--noconfirm",
-        "--clean",
         "--onedir",
         "--name", $name,
         "--distpath", $distRoot,
@@ -119,7 +156,13 @@ function Build-App(
     }
     if ($NeedsPyQt) {
         $args = $args[0..($args.Length - 2)] + @(
-            "--collect-all", "PyQt6",
+            # Let PyInstaller's Qt hooks include the Windows platform and
+            # image plugins required by these modules. Collecting all of
+            # PyQt6 also pulls in unused QML, QtQuick3D, multimedia,
+            # Bluetooth, PDF, SQL, bindings, translations, and tools.
+            "--hidden-import", "PyQt6.QtCore",
+            "--hidden-import", "PyQt6.QtGui",
+            "--hidden-import", "PyQt6.QtWidgets",
             "--add-data", "$assetsSrc;brake\\gui\assets",
             "--add-data", "$stylesSrc;brake\\gui"
         ) + $args[-1]
@@ -139,25 +182,95 @@ function Build-App(
     }
     Write-Host ""
     Write-Host "Building $name..."
-    python @args
-    if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed for $name with exit code $LASTEXITCODE" }
+    $originalPath = $env:PATH
+    $originalPythonPath = $env:PYTHONPATH
+    $originalQtPluginPath = $env:QT_PLUGIN_PATH
+    $originalQmlImportPath = $env:QML2_IMPORT_PATH
+    try {
+        # PyInstaller searches PATH while resolving native dependencies. Codex
+        # adds its own media/runtime DLL directories to PATH, and collecting
+        # those DLLs creates an incompatible mixed C/C++ runtime in Brake.
+        $env:PATH = (($originalPath -split ';') | Where-Object {
+            $_ -and $_ -notmatch $foreignBuildPathPattern
+        }) -join ';'
+        $env:PYTHONPATH = $null
+        $env:QT_PLUGIN_PATH = $null
+        $env:QML2_IMPORT_PATH = $null
+
+        & $pythonExe @args
+        $pyInstallerExitCode = $LASTEXITCODE
+    } finally {
+        $env:PATH = $originalPath
+        $env:PYTHONPATH = $originalPythonPath
+        $env:QT_PLUGIN_PATH = $originalQtPluginPath
+        $env:QML2_IMPORT_PATH = $originalQmlImportPath
+    }
+    if ($pyInstallerExitCode -ne 0) { throw "PyInstaller failed for $name with exit code $pyInstallerExitCode" }
+
+    $analysisToc = Join-Path $workRoot "$name\Analysis-00.toc"
+    if (Test-Path -LiteralPath $analysisToc) {
+        $foreignRuntimeReference = Select-String -LiteralPath $analysisToc -Pattern 'codex-runtimes|\.codex[\\\\/]plugins[\\\\/]cache' -Quiet
+        if ($foreignRuntimeReference) {
+            throw "PyInstaller resolved $name against a Codex-owned native runtime. Refusing to merge a contaminated bundle."
+        }
+    }
 }
 
-Build-App "BrakeAgent" "packaging\entry_agent.py" $true "Brake Agent" -NeedsNudeNet
-Build-App "BrakeBoot" "packaging\entry_boot.py" $true "Brake Startup Recovery"
-Build-App "BrakeBridge" "packaging\entry_bridge.py" $false "Brake Desktop Bridge"
-Build-App "BrakeLockout" "packaging\entry_lockout.py" $true "Brake Lockout" -NeedsPyQt
-Build-App "BrakeUninstallGuard" "packaging\entry_uninstall_guard.py" $true "Brake Uninstall Guard" -NeedsPyQt
-Build-App "BrakeService" "packaging\entry_service.py" $false "Brake Service"
-Build-App "BrakeWatchdog" "packaging\entry_watchdog.py" $false "Brake Watchdog"
+if ("BrakeAgent" -in $selectedComponents) {
+    Build-App "BrakeAgent" "packaging\entry_agent.py" $true "Brake Agent" -NeedsNudeNet
+}
+if ("BrakeBoot" -in $selectedComponents) {
+    Build-App "BrakeBoot" "packaging\entry_boot.py" $true "Brake Startup Recovery"
+}
+if ("BrakeBridge" -in $selectedComponents) {
+    Build-App "BrakeBridge" "packaging\entry_bridge.py" $false "Brake Desktop Bridge"
+}
+if ("BrakeLockout" -in $selectedComponents) {
+    Build-App "BrakeLockout" "packaging\entry_lockout.py" $true "Brake Lockout" -NeedsPyQt
+}
+if ("BrakeUninstallGuard" -in $selectedComponents) {
+    Build-App "BrakeUninstallGuard" "packaging\entry_uninstall_guard.py" $true "Brake Uninstall Guard" -NeedsPyQt
+}
+if ("BrakeService" -in $selectedComponents) {
+    Build-App "BrakeService" "packaging\entry_service.py" $false "Brake Service"
+}
+if ("BrakeWatchdog" -in $selectedComponents) {
+    Build-App "BrakeWatchdog" "packaging\entry_watchdog.py" $false "Brake Watchdog"
+}
 
 Write-Host ""
 Write-Host "Flattening executable folders into $bundle..."
-foreach ($name in @("BrakeAgent", "BrakeBoot", "BrakeBridge", "BrakeLockout", "BrakeUninstallGuard", "BrakeService", "BrakeWatchdog")) {
+foreach ($name in $selectedComponents) {
     $src = Join-Path $distRoot $name
     if (-not (Test-Path $src)) { throw "Missing build output: $src" }
     Copy-Item -Path (Join-Path $src "*") -Destination $bundle -Recurse -Force
     Remove-Item -LiteralPath $src -Recurse -Force
+}
+
+# Brake's Qt windows use hard-coded English text plus PNG and ICO assets.
+# These files are pulled in conservatively by PyInstaller's QtGui hook but
+# have no runtime callers in Brake. Keep every other Qt dependency that the
+# hook selected, including the Windows platform, style, and touch plugins.
+$qtRoot = Join-Path $bundle "_internal\PyQt6\Qt6"
+$unusedQtPaths = @(
+    (Join-Path $qtRoot "translations"),
+    (Join-Path $qtRoot "bin\Qt6Pdf.dll"),
+    (Join-Path $qtRoot "bin\Qt6Svg.dll"),
+    (Join-Path $qtRoot "plugins\iconengines\qsvgicon.dll"),
+    (Join-Path $qtRoot "plugins\imageformats\qgif.dll"),
+    (Join-Path $qtRoot "plugins\imageformats\qicns.dll"),
+    (Join-Path $qtRoot "plugins\imageformats\qjpeg.dll"),
+    (Join-Path $qtRoot "plugins\imageformats\qpdf.dll"),
+    (Join-Path $qtRoot "plugins\imageformats\qsvg.dll"),
+    (Join-Path $qtRoot "plugins\imageformats\qtga.dll"),
+    (Join-Path $qtRoot "plugins\imageformats\qtiff.dll"),
+    (Join-Path $qtRoot "plugins\imageformats\qwbmp.dll"),
+    (Join-Path $qtRoot "plugins\imageformats\qwebp.dll")
+)
+foreach ($path in $unusedQtPaths) {
+    if (Test-Path $path) {
+        Remove-Item -LiteralPath $path -Recurse -Force
+    }
 }
 
 $installerBundle = Join-Path $bundle "installer"
@@ -172,11 +285,15 @@ Copy-Item -Path (Join-Path $repoRoot "PRIVACY.md") -Destination $bundle -Force
 Copy-Item -Path (Join-Path $repoRoot "SECURITY.md") -Destination $bundle -Force
 
 $zip = Join-Path $distRoot "Brake-$Version-portable-dev.zip"
-if (Test-Path $zip) { Remove-Item -LiteralPath $zip -Force }
-Compress-Archive -Path (Join-Path $bundle "*") -DestinationPath $zip
+$releaseFiles = @()
+if (-not $Incremental) {
+    if (Test-Path $zip) { Remove-Item -LiteralPath $zip -Force }
+    Compress-Archive -Path (Join-Path $bundle "*") -DestinationPath $zip
+    $releaseFiles += $zip
+}
 
 $shaFile = Join-Path $distRoot "SHA256SUMS.txt"
-$releaseFiles = @($zip) + (Get-ChildItem -Path $bundle -Filter "*.exe" -File | Sort-Object Name | ForEach-Object { $_.FullName })
+$releaseFiles += @(Get-ChildItem -Path $bundle -Filter "*.exe" -File | Sort-Object Name | ForEach-Object { $_.FullName })
 $releaseFiles |
     ForEach-Object {
         $rel = $_.Substring($distRoot.Length + 1).Replace("\", "/")
@@ -187,7 +304,9 @@ $releaseFiles |
 Write-Host ""
 Write-Host "PyInstaller bundle complete:"
 Write-Host "  $bundle"
-Write-Host "  $zip"
+if (-not $Incremental) {
+    Write-Host "  $zip"
+}
 Write-Host "  $shaFile"
 Write-Host ""
 Write-Host "Next: package the Electron shell as Brake.exe, then run packaging\build_inno.ps1 to create BrakeSetup-$Version.exe"
