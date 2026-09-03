@@ -12,6 +12,19 @@ You can also view the public source code on GitHub:
 
 [View source on GitHub](https://github.com/usebrake/Brake)
 
+## Unsigned beta safety check
+
+Brake's beta installer is not digitally signed. Download it only from the official [Brake GitHub Releases page](https://github.com/usebrake/Brake/releases). Windows SmartScreen may warn that the app is unrecognized, and the administrator prompt may show an unknown or unverified publisher.
+
+Download `SHA256SUMS.txt` from the same GitHub release as `BrakeSetup.exe`, place both files in the same folder, and run:
+
+```powershell
+Get-FileHash .\BrakeSetup.exe -Algorithm SHA256
+Get-Content .\SHA256SUMS.txt
+```
+
+The hash reported for `BrakeSetup.exe` must exactly match its entry in `SHA256SUMS.txt`. Cancel setup and delete the installer if it came from another source, the hashes do not match, or Windows shows a different filename or publisher information than expected for this unsigned beta.
+
 ## Install steps
 
 1. Download `BrakeSetup.exe`.

@@ -661,7 +661,7 @@ function GuideModal({ tab, status, onClose }) {
           </GuideSection>
           <GuideSection title="When protection is on">
             <p>Clear explicit content triggers the full lockout. Your current lockout length is {duration} {duration === 1 ? "minute" : "minutes"}. Repeated full lockouts within 24 hours can make the next lockout longer.</p>
-            <p>When the lockout ends, Windows shuts down and force-closes open apps. After restart, Brake goes back to normal protection with the 24-hour memory still active.</p>
+            <p>If shutdown after lockout is enabled, Windows shuts down and force-closes open apps when the lockout ends. After restart, Brake goes back to normal protection with the 24-hour memory still active.</p>
           </GuideSection>
           <GuideSection title="Commitment">
             <p>Without a commitment, your password can turn protection off anytime. A commitment locks protection in so that password cannot walk it back until the commitment ends.</p>
@@ -706,7 +706,7 @@ function FeedbackModal({ onClose }) {
   return (
     <Modal title="Send feedback" onClose={onClose}>
       <div className="feedback-panel">
-        <p><strong>False positives are rare, but they can happen.</strong> If Brake locks you out incorrectly, send feedback with what was on screen so it can be fixed and updated as quickly as possible.</p>
+        <p>If Brake locks you out incorrectly, use your configured recovery option if needed, then send feedback describing what was on screen. Do not include sensitive screenshots, passwords, or recovery codes.</p>
         <p>Brake will open your browser or email app. Nothing is sent from Brake automatically.</p>
         <div className="feedback-actions">
           <Button variant="safe" icon={Github} onClick={openIssue}>
@@ -987,11 +987,14 @@ export default function App() {
     const currentUntilMs = Date.parse(status.committedUntil || "");
     const nextUntilMs = Date.parse(payload?.until || "");
     const extendsActiveCommitment = status.commitmentActive && !Number.isNaN(currentUntilMs) && !Number.isNaN(nextUntilMs) && nextUntilMs > currentUntilMs;
+    const cancelsPendingRecovery = status.recoveryUnlockPending;
     const submit = () => window.brake?.setCommitment?.(payload).then((response) => {
       if (response?.ok) {
         applyBackendResponse(response);
         setCommitmentPrompt(null);
-        setNotice("Commitment is active.");
+        setNotice(cancelsPendingRecovery
+          ? "Commitment is active. The pending emergency unlock was canceled."
+          : "Commitment is active.");
         return;
       }
       setCommitmentPrompt((current) => ({
@@ -1002,7 +1005,9 @@ export default function App() {
     if (extendsActiveCommitment) {
       requestTimedConfirmation("commitment", {
         title: "Extend commitment?",
-        body: "This adds time to the active commitment. Your password still cannot shorten it or turn protection off until the new end time.",
+        body: cancelsPendingRecovery
+          ? "This adds time to the active commitment and cancels the pending emergency unlock. Protection will stay on until the new end time."
+          : "This adds time to the active commitment. Your password still cannot shorten it or turn protection off until the new end time.",
         warning: "Use this only when you are sure you want stronger commitment.",
         confirmLabel: "Extend"
       }, submit);

@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.1.4-beta",
+    [string]$Version = "0.1.5-beta",
     [string]$InnoCompiler = "",
     [switch]$Incremental,
     [string[]]$PythonComponents = @(),
@@ -10,7 +10,7 @@ param(
 )
 
 # Official release, clean rebuild of every component:
-#   .\packaging\build_windows_installer.ps1 -Version 0.1.4-beta
+#   .\packaging\build_windows_installer.ps1 -Version 0.1.5-beta
 # Incremental Python-only rebuild, preserving the existing bundle:
 #   .\packaging\build_windows_installer.ps1 -Incremental -PythonComponents BrakeLockout,BrakeUninstallGuard
 # Add -DesktopChanged when desktop Electron or React sources changed.

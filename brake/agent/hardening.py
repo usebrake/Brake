@@ -15,6 +15,7 @@ from typing import List, Optional
 
 from brake.config import load_settings
 from brake.state import StateStore, StateTamperedError
+from brake.state.recovery_unlock import apply_due_recovery_unlock_in_memory
 
 _log = logging.getLogger(__name__)
 
@@ -95,6 +96,7 @@ class HardeningLoop(threading.Thread):
             return self._protected_cache
         try:
             s = self.store.load()
+            s = apply_due_recovery_unlock_in_memory(s)
             # Fresh install with no state yet: nothing to protect.
             value = bool(s and s.enabled)
         except StateTamperedError:

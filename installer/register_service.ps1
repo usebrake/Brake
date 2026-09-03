@@ -244,11 +244,21 @@ function Configure-Failure($svcName) {
     & sc.exe config $svcName start= auto | Out-Null
 }
 
+function Assert-ServiceRegistered($svcName) {
+    & sc.exe query $svcName *> $null
+    if ($LASTEXITCODE -ne 0) {
+        throw "$svcName was not registered successfully."
+    }
+}
+
 Install-Svc "brake.service" "BrakeService"
 Install-Svc "brake.watchdog" "BrakeWatchdog"
 
 Configure-Failure "BrakeService"
 Configure-Failure "BrakeWatchdog"
+
+Assert-ServiceRegistered "BrakeService"
+Assert-ServiceRegistered "BrakeWatchdog"
 
 Write-Host ""
 Write-Host "Applying installed-file permissions..."

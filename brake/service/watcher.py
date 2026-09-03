@@ -26,7 +26,7 @@ from brake.runtime import lockout_command
 from brake.service.scan_environment import ScanEnvironmentMonitor
 from brake.service.scan_pacer import FramePacer, SUSTAINED_SCAN_SECONDS
 from brake.state import StateStore, StateTamperedError
-from brake.state.recovery_unlock import apply_due_recovery_unlock
+from brake.state.recovery_unlock import apply_due_recovery_unlock_in_memory
 from brake.state.schema import LOCKOUT_DURATION_DEFAULT, SHUTDOWN_AFTER_LOCKOUT_DEFAULT
 from brake.test_mode import is_test_mode, t
 
@@ -216,7 +216,7 @@ class Watcher:
         try:
             s = self.store.load()
             if s is not None:
-                s = apply_due_recovery_unlock(self.store, s)
+                s = apply_due_recovery_unlock_in_memory(s)
             result = (s, False)
         except StateTamperedError:
             _log.critical("State tampered. Fail-secure: assume enabled.")

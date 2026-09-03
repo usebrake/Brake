@@ -305,6 +305,9 @@ class Controller:
             return False, "commitment_blocks_shortening"
         s.enabled = True
         s.committed_until = dt.isoformat()
+        # Accepting a commitment is an explicit choice to keep protection on.
+        # Do not let an older emergency-unlock timer disable it later.
+        s.recovery_unlock_after = None
         self.store.save(s)
         return True, ""
 

@@ -20,15 +20,19 @@ You can also run the installed uninstaller directly from `C:\Program Files\Brake
 
 ## If protection is on
 
-If protection is on without an active commitment, uninstall requires your password.
+The uninstaller does not accept your password or recovery code. It blocks uninstall until protection is already off.
 
-If you use the recovery code instead, Brake starts the configured emergency cooldown. After the cooldown finishes, protection turns off and uninstall can continue.
+1. Open Brake.
+2. Use your password to turn protection off.
+3. Run the uninstaller again.
+
+If you cannot use your password, enter your recovery code inside Brake to start the configured emergency cooldown. Wait for the cooldown to finish and protection to turn off, then run the uninstaller again.
 
 ## If commitment is active
 
-Your normal password cannot uninstall during commitment.
+Your normal password cannot turn protection off during commitment, and the uninstaller remains blocked.
 
-The recovery code can start the configured emergency cooldown. When the cooldown finishes, Brake turns protection off and clears the commitment so uninstall can continue.
+Open Brake and use your recovery code to start the configured emergency cooldown. When the cooldown finishes, Brake turns protection off and clears the commitment. Then run the uninstaller again.
 
 ## If Windows says a file is in use
 

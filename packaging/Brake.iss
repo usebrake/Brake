@@ -1,7 +1,7 @@
 #define MyAppName "Brake"
 #define MyAppVersion GetEnv("BRAKE_BUILD_VERSION")
 #if MyAppVersion == ""
-#define MyAppVersion "0.1.4-beta"
+#define MyAppVersion "0.1.5-beta"
 #endif
 #define MyAppPublisher "UseBrake"
 #define MyAppExeName "Brake.exe"
@@ -15,9 +15,9 @@ AppPublisher={#MyAppPublisher}
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoDescription=Brake Setup
 VersionInfoProductName=Brake
-VersionInfoProductVersion=0.1.4.0
+VersionInfoProductVersion=0.1.5.0
 VersionInfoTextVersion={#MyAppVersion}
-VersionInfoVersion=0.1.4.0
+VersionInfoVersion=0.1.5.0
 DefaultDirName={autopf}\\Brake
 DefaultGroupName=Brake
 DisableProgramGroupPage=yes
@@ -51,7 +51,6 @@ Name: "{commondesktop}\\Brake"; Filename: "{app}\{#MyAppExeName}"; IconFilename:
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional shortcuts:"
 
 [Run]
-Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\installer\register_service.ps1"" -NoPrompt"; StatusMsg: "Installing Brake services..."; Flags: runhidden waituntilterminated
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch Brake"; Flags: nowait postinstall skipifsilent
 
 [Code]
@@ -149,14 +148,107 @@ begin
   StopScript := ExpandConstant('{app}\installer\stop_for_update.ps1');
   if FileExists(StopScript) then
   begin
-    Exec(
+    if not Exec(
       ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
       '-NoProfile -ExecutionPolicy Bypass -File "' + StopScript + '"',
       '',
       SW_HIDE,
       ewWaitUntilTerminated,
       ResultCode
-    );
+    ) then
+    begin
+      Result :=
+        'Brake Setup could not start the update preparation step. ' +
+        'Setup has been stopped before any files were replaced. Restart Windows and try again.';
+      exit;
+    end;
+
+    if ResultCode <> 0 then
+    begin
+      Result :=
+        'Brake Setup could not safely stop the existing Brake processes. ' +
+        'Setup has been stopped before any files were replaced. Restart Windows and try again. ' +
+        'Update preparation returned exit code ' + IntToStr(ResultCode) + '.';
+      exit;
+    end;
   end;
   Result := '';
+end;
+
+function ServiceIsRegistered(const ServiceName: String): Boolean;
+var
+  ResultCode: Integer;
+begin
+  Result :=
+    Exec(
+      ExpandConstant('{sys}\sc.exe'),
+      'query "' + ServiceName + '"',
+      '',
+      SW_HIDE,
+      ewWaitUntilTerminated,
+      ResultCode
+    ) and (ResultCode = 0);
+end;
+
+procedure VerifyBrakeServices;
+var
+  MissingServices: String;
+begin
+  MissingServices := '';
+  if not ServiceIsRegistered('BrakeService') then
+    MissingServices := 'BrakeService';
+  if not ServiceIsRegistered('BrakeWatchdog') then
+  begin
+    if MissingServices <> '' then
+      MissingServices := MissingServices + ' and ';
+    MissingServices := MissingServices + 'BrakeWatchdog';
+  end;
+
+  if MissingServices <> '' then
+    RaiseException(
+      'Brake Setup could not verify the required Windows services: ' + MissingServices + '. ' +
+      'Installation was not completed. Restart Windows and run setup again.'
+    );
+end;
+
+procedure RegisterAndVerifyBrakeServices;
+var
+  RegisterScript: String;
+  ResultCode: Integer;
+begin
+  RegisterScript := ExpandConstant('{app}\installer\register_service.ps1');
+  if not FileExists(RegisterScript) then
+    RaiseException(
+      'Brake Setup could not find the service registration script. ' +
+      'Installation was not completed. Download a fresh installer and try again.'
+    );
+
+  WizardForm.StatusLabel.Caption := 'Installing Brake services...';
+  if not Exec(
+    ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+    '-NoProfile -ExecutionPolicy Bypass -File "' + RegisterScript + '" -NoPrompt',
+    '',
+    SW_HIDE,
+    ewWaitUntilTerminated,
+    ResultCode
+  ) then
+    RaiseException(
+      'Brake Setup could not start service registration. ' +
+      'Installation was not completed. Restart Windows and run setup again.'
+    );
+
+  if ResultCode <> 0 then
+    RaiseException(
+      'Brake Setup could not register its required Windows services. ' +
+      'Installation was not completed. Restart Windows and run setup again. ' +
+      'Service registration returned exit code ' + IntToStr(ResultCode) + '.'
+    );
+
+  VerifyBrakeServices;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+    RegisterAndVerifyBrakeServices;
 end;

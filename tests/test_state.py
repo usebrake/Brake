@@ -448,6 +448,60 @@ def test_recovery_unlock_schedule_and_apply(tmp: Path) -> None:
     print("  [ok] recovery unlock waits, then clears protection and commitment")
 
 
+def test_due_recovery_unlock_can_be_reflected_without_state_write(tmp: Path) -> None:
+    _store, State, _, crypto_mod = _fresh_store(tmp)
+    from datetime import datetime, timedelta, timezone
+    from brake.state.recovery_unlock import apply_due_recovery_unlock_in_memory
+
+    state = State(
+        password_hash=crypto_mod.hash_password("pw"),
+        enabled=True,
+        committed_until=(datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(timespec="seconds"),
+        recovery_unlock_after=(datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat(timespec="seconds"),
+    )
+
+    reflected = apply_due_recovery_unlock_in_memory(state)
+    assert reflected is state
+    assert state.enabled is False
+    assert state.committed_until is None
+    assert state.recovery_unlock_after is None
+    print("  [ok] read-only processes honor a due recovery unlock without writing state")
+
+
+def test_read_only_agent_stops_when_recovery_unlock_is_due(tmp: Path) -> None:
+    _store, State, _, crypto_mod = _fresh_store(tmp)
+    from datetime import datetime, timedelta, timezone
+    from brake.agent.hardening import HardeningLoop
+    from brake.service.watcher import Watcher
+
+    state = State(
+        password_hash=crypto_mod.hash_password("pw"),
+        enabled=True,
+        committed_until=(datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(timespec="seconds"),
+        recovery_unlock_after=(datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat(timespec="seconds"),
+    )
+
+    class ReadOnlyStore:
+        def load(self):
+            return state
+
+        def save(self, _state):
+            raise AssertionError("user-session agent must not write signed state")
+
+    watcher = Watcher.__new__(Watcher)
+    watcher.store = ReadOnlyStore()
+    watcher._state_cache = None
+    watcher._state_cached_at = 0.0
+    assert watcher._state_says_run() is False
+
+    hardening = HardeningLoop.__new__(HardeningLoop)
+    hardening.store = ReadOnlyStore()
+    hardening._protected_cache = None
+    hardening._protected_cached_at = 0.0
+    assert hardening._protected() is False
+    print("  [ok] watcher and hardening stop at cooldown expiry without a state write")
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="brake-test-") as td:
         tmp = Path(td)
@@ -458,6 +512,8 @@ def main() -> int:
             test_duration_clamping,
             test_recovery_cooldown_clamping,
             test_commitment_active,
+            test_due_recovery_unlock_can_be_reflected_without_state_write,
+            test_read_only_agent_stops_when_recovery_unlock_is_due,
             test_tamper_detection,
             test_missing_state_returns_none,
             test_deletion_bypass_refused,

@@ -477,5 +477,8 @@ class IPCServer(threading.Thread):
 
         s.enabled = True
         s.committed_until = dt.isoformat()
+        # A newly accepted or extended commitment supersedes any pending
+        # emergency unlock, otherwise the old timer would erase it later.
+        s.recovery_unlock_after = None
         self.store.save(s)
         return {"ok": True, "committed_until": s.committed_until}

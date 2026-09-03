@@ -108,6 +108,40 @@ def test_commitment_blocks_recovery_loosening_but_allows_stricter(tmp: Path) -> 
     print("  [ok] commitment blocks easier recovery but allows stricter settings")
 
 
+def test_setting_commitment_cancels_pending_recovery_unlock(tmp: Path) -> None:
+    Controller, State, StateStore, hash_password = _fresh(tmp)
+    store = StateStore()
+    pending_unlock = (datetime.now(timezone.utc) + timedelta(minutes=20)).isoformat(timespec="seconds")
+    new_commitment = (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat(timespec="seconds")
+    store.save(State(
+        password_hash=hash_password("password"),
+        enabled=True,
+        committed_until=(datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(timespec="seconds"),
+        recovery_unlock_after=pending_unlock,
+    ))
+
+    controller = Controller(allow_direct_writes=True)
+    controller.service_up = lambda: False  # type: ignore[method-assign]
+    ok, err = controller.set_commitment(new_commitment, "password")
+    assert ok, err
+    saved = store.load()
+    assert saved is not None
+    assert saved.enabled is True
+    assert saved.commitment_active()
+    assert saved.recovery_unlock_after is None
+
+    from brake.service.ipc_server import IPCServer
+
+    saved.recovery_unlock_after = pending_unlock
+    store.save(saved)
+    response = IPCServer(store, threading.Event())._cmd_set_commitment(new_commitment, "password")
+    assert response["ok"] is True
+    saved = store.load()
+    assert saved is not None
+    assert saved.recovery_unlock_after is None
+    print("  [ok] setting commitment cancels pending recovery in controller and service")
+
+
 def test_recovery_use_limit_requires_password_to_loosen(tmp: Path) -> None:
     Controller, State, StateStore, hash_password = _fresh(tmp)
     store = StateStore()
@@ -275,6 +309,7 @@ if __name__ == "__main__":
     test_dev_controller_can_direct_write_without_service(base / "dev")
     test_recovery_settings_require_password_to_loosen_when_enabled(base / "recovery-password")
     test_commitment_blocks_recovery_loosening_but_allows_stricter(base / "recovery-commitment")
+    test_setting_commitment_cancels_pending_recovery_unlock(base / "commitment-cancels-recovery")
     test_recovery_use_limit_requires_password_to_loosen(base / "recovery-use-password")
     test_shutdown_toggle_requires_password_to_loosen_when_enabled(base / "shutdown-password")
     test_commitment_blocks_turning_shutdown_off_but_allows_on(base / "shutdown-commitment")

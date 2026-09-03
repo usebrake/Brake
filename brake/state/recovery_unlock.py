@@ -49,6 +49,20 @@ def cancel_recovery_unlock(store: StateStore, state: Optional[State] = None) -> 
     return s
 
 
+def apply_due_recovery_unlock_in_memory(state: Optional[State]) -> Optional[State]:
+    """Reflect a matured emergency unlock without writing protected state.
+
+    User-session processes can read the signed state but intentionally cannot
+    replace it. They still need to stop scanning as soon as the cooldown is
+    due, while the privileged service persists the same transition.
+    """
+    if state is not None and state.recovery_unlock_due():
+        state.enabled = False
+        state.committed_until = None
+        state.recovery_unlock_after = None
+    return state
+
+
 def apply_due_recovery_unlock(store: StateStore, state: Optional[State] = None) -> Optional[State]:
     """Apply a matured emergency unlock, if one exists."""
     s = state if state is not None else store.load()
@@ -56,8 +70,6 @@ def apply_due_recovery_unlock(store: StateStore, state: Optional[State] = None) 
         return None
 
     if s.recovery_unlock_due():
-        s.enabled = False
-        s.committed_until = None
-        s.recovery_unlock_after = None
+        apply_due_recovery_unlock_in_memory(s)
         store.save(s)
     return s
