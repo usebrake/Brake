@@ -21,7 +21,7 @@ from brake.detectors.nudity import NudityDetector
 from brake.incident_memory import IncidentLedger
 from brake.lockout.emergency import LOCKOUT_RECOVERY_MESSAGE
 from brake.lockout.persistence import LockoutPersistence, _TamperedLockoutError
-from brake.lockout.recovery import spawn_resume_lockout_if_needed
+from brake.lockout.recovery import lockout_process_alive, spawn_resume_lockout_if_needed
 from brake.runtime import lockout_command
 from brake.service.scan_environment import ScanEnvironmentMonitor
 from brake.service.scan_pacer import FramePacer, SUSTAINED_SCAN_SECONDS
@@ -53,6 +53,7 @@ HARD_CONFIRM_WINDOW = t(18, 6)
 HARD_IMMEDIATE_CONFIDENCE = 0.90
 ANIME_EXPLICIT_CONFIDENCE = 0.90
 POST_LOCKOUT_RECOVERY_GRACE_SECONDS = 10.0
+LOCKOUT_UI_START_GRACE_SECONDS = 3.0
 ILLUSTRATED_NATIVE_FULLSCREEN_STRIKES = 3
 ILLUSTRATED_NATIVE_FULLSCREEN_WINDOW = 30.0
 ILLUSTRATED_NATIVE_FULLSCREEN_MIN_SPAN = 8.0
@@ -186,6 +187,7 @@ class Watcher:
         self._hard_strike_count = 0
         self._lockout_was_recovered = False
         self._post_lockout_recovery_grace_until = 0.0
+        self._lockout_ui_spawn_grace_until = 0.0
         self._illustrated_native_fullscreen_first_at = 0.0
         self._illustrated_native_fullscreen_strikes = 0
         self._context_exposure_events: list[tuple[float, float, bool, str, str]] = []
@@ -288,6 +290,7 @@ class Watcher:
             except Exception:
                 pass
             self._lockout_until = 0.0
+            self._lockout_ui_spawn_grace_until = 0.0
             if self._lockout_was_recovered:
                 self._lockout_was_recovered = False
                 self._post_lockout_recovery_grace_until = now + POST_LOCKOUT_RECOVERY_GRACE_SECONDS
@@ -300,6 +303,11 @@ class Watcher:
                     POST_LOCKOUT_RECOVERY_GRACE_SECONDS,
                 )
             return 0.0
+
+        if now >= self._lockout_ui_spawn_grace_until and not lockout_process_alive():
+            _log.error("Active lockout has no live overlay process; respawning it.")
+            spawn_resume_lockout_if_needed("watcher-active")
+            self._lockout_ui_spawn_grace_until = now + LOCKOUT_UI_START_GRACE_SECONDS
 
         remaining = record.remaining_seconds()
         self._lockout_until = now + remaining
@@ -648,6 +656,7 @@ class Watcher:
         self._reset_context_exposure()
         self._lockout_was_recovered = False
         self._post_lockout_recovery_grace_until = 0.0
+        self._lockout_ui_spawn_grace_until = time.monotonic() + LOCKOUT_UI_START_GRACE_SECONDS
         self._lockout_until = time.monotonic() + duration
 
     def _scan_once(

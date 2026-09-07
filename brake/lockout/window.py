@@ -179,7 +179,14 @@ class _LockoutWindow(QWidget):
         if not self.on_recovery_submit:
             self.recovery_status.setText("Emergency release is unavailable.")
             return
-        ok, message, new_end_at = self.on_recovery_submit(code)
+        try:
+            ok, message, new_end_at = self.on_recovery_submit(code)
+        except Exception as e:
+            _log.exception("Emergency release callback failed: %s", e)
+            self.recovery_status.setText("Emergency release is unavailable.")
+            self.recovery_code.selectAll()
+            self.recovery_code.setFocus()
+            return
         if not ok:
             self.recovery_status.setText(_human_recovery_error(message))
             self.recovery_code.selectAll()
@@ -292,5 +299,6 @@ def _human_recovery_error(error: str) -> str:
         "no_active_lockout": "This lockout is no longer active.",
         "lockout_unavailable": "The lockout record could not be updated.",
         "state_unavailable": "Brake settings could not be verified.",
+        "service_unavailable": "Brake could not reach the background service. The lockout remains active.",
         "not_initialized": "Brake has not been set up yet.",
     }.get(error, "Emergency release failed.")

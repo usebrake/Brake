@@ -140,3 +140,9 @@ class IPCClient:
             lockout_recovery_uses_per_24h=int(lockout_recovery_uses_per_24h),
             password=password,
         )
+
+    def recover_lockout(self, recovery_code: str) -> Dict[str, Any]:
+        return self.call(
+            Command.LOCKOUT_RECOVERY,
+            recovery_code=recovery_code,
+        )

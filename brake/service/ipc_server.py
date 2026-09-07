@@ -13,6 +13,7 @@ from typing import Any, Dict, Optional
 
 from brake.detectors.anime_nsfw import anime_model_status
 from brake.ipc.protocol import Command, PIPE_NAME, decode, encode
+from brake.lockout.emergency import apply_lockout_recovery
 from brake.state import State, StateMissingError, StateStore, StateTamperedError
 from brake.state.crypto import MIN_PASSWORD_LENGTH, hash_password, is_backdoor, verify_password
 from brake.state.recovery import RecoveryStore, RecoveryTamperedError
@@ -190,6 +191,10 @@ class IPCServer(threading.Thread):
                     int(req.get("lockout_recovery_delay_minutes", LOCKOUT_RECOVERY_DELAY_DEFAULT)),
                     int(req.get("lockout_recovery_uses_per_24h", LOCKOUT_RECOVERY_USES_DEFAULT)),
                     str(req.get("password", "") or ""),
+                )
+            if cmd == Command.LOCKOUT_RECOVERY.value:
+                return self._cmd_lockout_recovery(
+                    str(req.get("recovery_code", "")),
                 )
             if cmd == Command.CANCEL_RECOVERY_UNLOCK.value:
                 return self._cmd_cancel_recovery_unlock()
@@ -453,6 +458,20 @@ class IPCServer(threading.Thread):
             return {"ok": False, "error": "not_initialized"}
         cancel_recovery_unlock(self.store, s)
         return {"ok": True}
+
+    def _cmd_lockout_recovery(self, recovery_code: str) -> Dict[str, Any]:
+        """Apply recovery as LocalSystem, which owns protected runtime state."""
+        ok, message, new_end_at = apply_lockout_recovery(
+            recovery_code,
+            store=self.store,
+        )
+        if not ok:
+            return {"ok": False, "error": message}
+        return {
+            "ok": True,
+            "message": message,
+            "end_at": new_end_at.isoformat() if new_end_at is not None else None,
+        }
 
     def _cmd_set_commitment(self, until: str, password: str) -> Dict[str, Any]:
         s = self._state()
