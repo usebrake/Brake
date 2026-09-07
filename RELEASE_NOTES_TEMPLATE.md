@@ -1,4 +1,4 @@
-# Brake v0.1.5-beta Windows Beta
+# Brake v0.1.6-beta Windows Beta
 
 Free source-available Windows technical beta.
 
@@ -9,6 +9,8 @@ Free source-available Windows technical beta.
 - Setup now stops with an error when update preparation, service registration, or required-service verification fails.
 - Install, uninstall, shutdown, feedback, and checksum guidance now match the implemented beta behavior.
 - The production Browserslist dependency chain is updated to `4.28.8`.
+- Lockout recovery state now uses one explicit data directory across the scanner and lockout processes, so only the configured recoverable lockouts accept recovery codes.
+- Lockout recovery diagnostics record the resolved state directory and recovery timing without logging recovery codes.
 
 ## Current Distribution
 
