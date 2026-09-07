@@ -20,12 +20,14 @@ import logging
 import os
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from brake import autostart, paths
 from brake.config import load_settings
+from brake.ipc.client import IPCClient, IPCError
 from brake.lockout.countdown import Countdown
-from brake.lockout.emergency import apply_lockout_recovery, lockout_recovery_available
+from brake.lockout.emergency import LOCKOUT_RECOVERY_MESSAGE, lockout_recovery_available
 from brake.lockout.persistence import LockoutPersistence, _TamperedLockoutError
 from brake.lockout.recovery import clear_lockout_pid, write_lockout_pid
 from brake.lockout.window import LockoutApp
@@ -94,6 +96,26 @@ def _lockout_recovery_enabled_for_ui() -> bool:
     return lockout_recovery_available()
 
 
+def _apply_lockout_recovery_via_service(recovery_code: str):
+    """Ask the privileged service to update state and the active timer."""
+    try:
+        response = IPCClient(timeout_ms=5000).recover_lockout(recovery_code)
+    except IPCError as e:
+        logging.warning("Lockout recovery service request failed: %s", e)
+        return False, "service_unavailable", None
+
+    if not response.get("ok"):
+        return False, str(response.get("error", "service_unavailable")), None
+
+    raw_end_at = response.get("end_at")
+    try:
+        new_end_at = datetime.fromisoformat(str(raw_end_at)) if raw_end_at else None
+    except (TypeError, ValueError):
+        logging.error("Lockout recovery service returned an invalid end time.")
+        return False, "lockout_unavailable", None
+    return True, str(response.get("message", LOCKOUT_RECOVERY_MESSAGE)), new_end_at
+
+
 def _run_persistent(duration: int, reason: str, message: str = "", shutdown_on_done: bool = False) -> int:
     persist = LockoutPersistence()
     record = persist.start(duration, reason, message=message, shutdown_on_done=shutdown_on_done)
@@ -107,7 +129,7 @@ def _run_persistent(duration: int, reason: str, message: str = "", shutdown_on_d
             message=message,
             on_done=_on_done(persist, shutdown_on_done),
             recovery_enabled=_lockout_recovery_enabled_for_ui(),
-            on_recovery_submit=lambda code: apply_lockout_recovery(code, persistence=persist),
+            on_recovery_submit=_apply_lockout_recovery_via_service,
         ).run()
     finally:
         clear_lockout_pid()
@@ -140,7 +162,7 @@ def _run_resume() -> int:
             message=record.message,
             on_done=_on_done(persist, record.shutdown_on_done),
             recovery_enabled=_lockout_recovery_enabled_for_ui(),
-            on_recovery_submit=lambda code: apply_lockout_recovery(code, persistence=persist),
+            on_recovery_submit=_apply_lockout_recovery_via_service,
         ).run()
     finally:
         clear_lockout_pid()

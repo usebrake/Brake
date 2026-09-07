@@ -703,6 +703,32 @@ def test_watcher_tracks_shortened_recovered_lockout_timer() -> None:
     print("  [ok] watcher follows shortened recovered lockout timer")
 
 
+def test_watcher_respawns_missing_overlay_during_active_lockout() -> None:
+    import time
+
+    import brake.service.watcher as watcher_mod
+
+    w = _watcher()
+    now = time.monotonic()
+    w._lockout_until = now + (30 * 60)
+    w._lockout_ui_spawn_grace_until = 0.0
+    w.lockouts.start(30 * 60, "TEST", shutdown_on_done=True)
+    calls: list[str] = []
+    original_alive = watcher_mod.lockout_process_alive
+    original_resume = watcher_mod.spawn_resume_lockout_if_needed
+    try:
+        watcher_mod.lockout_process_alive = lambda: False
+        watcher_mod.spawn_resume_lockout_if_needed = lambda source: calls.append(source) or True
+        remaining = w._active_lockout_remaining(now)
+    finally:
+        watcher_mod.lockout_process_alive = original_alive
+        watcher_mod.spawn_resume_lockout_if_needed = original_resume
+
+    assert remaining > 0
+    assert calls == ["watcher-active"]
+    print("  [ok] watcher restores a crashed lockout overlay")
+
+
 def test_normal_lockout_expiry_does_not_arm_recovery_grace() -> None:
     import time
 
@@ -744,6 +770,7 @@ def main() -> int:
         test_different_hard_label_rearms_instead_of_confirming,
         test_watcher_resumes_after_recovered_lockout_record_expires,
         test_watcher_tracks_shortened_recovered_lockout_timer,
+        test_watcher_respawns_missing_overlay_during_active_lockout,
         test_normal_lockout_expiry_does_not_arm_recovery_grace,
     ]
     for fn in tests:

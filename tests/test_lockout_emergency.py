@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
+import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -180,6 +181,44 @@ def test_unlimited_recovery_allows_repeated_uses(tmp: Path) -> None:
     print("  [ok] unlimited recovery permits repeated uses")
 
 
+def test_service_dispatch_records_use_and_shortens_active_lockout(tmp: Path) -> None:
+    _, _, persistence, recovery_store, State, store, hash_password = _fresh(tmp)
+    from brake.ipc.protocol import Command
+    from brake.service.ipc_server import IPCServer
+
+    store.save(State(
+        password_hash=hash_password("password"),
+        enabled=True,
+        lockout_recovery_uses_per_24h=1,
+        lockout_recovery_delay_minutes=0,
+    ))
+    token = recovery_store.generate()
+    persistence.start(30 * 60, "TEST", shutdown_on_done=True)
+    server = IPCServer(store, threading.Event())
+
+    response = server._dispatch({
+        "cmd": Command.LOCKOUT_RECOVERY.value,
+        "recovery_code": token,
+    })
+    assert response["ok"] is True
+    assert response["end_at"]
+    saved = store.load()
+    assert saved is not None
+    assert len(saved.recent_lockout_recovery_uses()) == 1
+    released = persistence.resume()
+    assert released is not None
+    assert released.duration_seconds == 0
+    assert released.shutdown_on_done is False
+
+    persistence.start(30 * 60, "TEST-AGAIN", shutdown_on_done=True)
+    rejected = server._dispatch({
+        "cmd": Command.LOCKOUT_RECOVERY.value,
+        "recovery_code": token,
+    })
+    assert rejected == {"ok": False, "error": "lockout_recovery_limit_reached"}
+    print("  [ok] service owns the recovery counter and active timer update")
+
+
 def main() -> int:
     tests = [
         test_lockout_recovery_available_by_default,
@@ -188,6 +227,7 @@ def main() -> int:
         test_default_recovery_is_immediate_and_only_once_per_24_hours,
         test_expired_recovery_use_rolls_out_of_window,
         test_unlimited_recovery_allows_repeated_uses,
+        test_service_dispatch_records_use_and_shortens_active_lockout,
     ]
     for fn in tests:
         print(f"\n{fn.__name__}")
