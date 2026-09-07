@@ -17,10 +17,12 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import subprocess
 import sys
+from pathlib import Path
 
-from brake import autostart
+from brake import autostart, paths
 from brake.config import load_settings
 from brake.lockout.countdown import Countdown
 from brake.lockout.emergency import apply_lockout_recovery, lockout_recovery_available
@@ -43,6 +45,29 @@ def _shutdown_windows() -> None:
         subprocess.Popen(["shutdown.exe", "/s", "/f", "/t", "0"])
     except Exception as e:
         logging.exception("Failed to request Windows shutdown: %s", e)
+
+
+def _pin_data_dir(raw: str) -> None:
+    """Make the launcher's canonical runtime directory authoritative."""
+    if raw:
+        os.environ["BRAKE_DATA_DIR"] = str(Path(raw).resolve())
+
+
+def _configure_logging() -> None:
+    """Keep lockout and recovery diagnostics in windowed builds."""
+    try:
+        handler = logging.FileHandler(paths.logs_dir() / "lockout.log", encoding="utf-8")
+        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+        root = logging.getLogger()
+        root.setLevel(logging.INFO)
+        for existing in list(root.handlers):
+            if isinstance(existing, logging.FileHandler):
+                root.removeHandler(existing)
+                existing.close()
+        root.addHandler(handler)
+    except Exception:
+        # Diagnostics must never prevent the protection overlay from opening.
+        logging.basicConfig(level=logging.INFO)
 
 
 def _on_done(persist: LockoutPersistence, shutdown_on_done: bool):
@@ -123,6 +148,7 @@ def _run_resume() -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="brake.lockout")
+    parser.add_argument("--data-dir", type=str, default="", help=argparse.SUPPRESS)
     parser.add_argument("--duration", type=int, help="Lockout duration in seconds.")
     parser.add_argument("--reason", type=str, default="UNKNOWN")
     parser.add_argument("--message", type=str, default="")
@@ -132,7 +158,9 @@ def main(argv: list[str] | None = None) -> int:
                         help="Transient lockout; don't write lockout.json or autostart hook.")
     args = parser.parse_args(argv)
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    _pin_data_dir(args.data_dir)
+    _configure_logging()
+    logging.info("Lockout starting (pid=%s, data_dir=%s).", os.getpid(), paths.data_dir())
 
     if args.duration is None:
         return _run_resume()

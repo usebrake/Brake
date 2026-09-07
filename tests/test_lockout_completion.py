@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -51,10 +52,33 @@ def test_lockout_recovery_ui_does_not_depend_on_shutdown() -> None:
     print("  [ok] lockout recovery UI is independent of shutdown setting")
 
 
+def test_explicit_data_dir_overrides_conflicting_environment() -> None:
+    import os
+
+    import brake.lockout.__main__ as lockout_main
+
+    previous = os.environ.get("BRAKE_DATA_DIR")
+    root = Path(tempfile.mkdtemp(prefix="brake-lockout-data-dir-"))
+    wrong = root / "wrong"
+    canonical = root / "canonical"
+    try:
+        os.environ["BRAKE_DATA_DIR"] = str(wrong)
+        lockout_main._pin_data_dir(str(canonical))
+        assert lockout_main.paths.data_dir() == canonical.resolve()
+    finally:
+        if previous is None:
+            os.environ.pop("BRAKE_DATA_DIR", None)
+        else:
+            os.environ["BRAKE_DATA_DIR"] = previous
+
+    print("  [ok] explicit lockout data directory wins over inherited environment")
+
+
 def main() -> int:
     tests = [
         test_shutdown_attempted_even_if_lockout_clear_fails,
         test_lockout_recovery_ui_does_not_depend_on_shutdown,
+        test_explicit_data_dir_overrides_conflicting_environment,
     ]
     for fn in tests:
         print(f"\n{fn.__name__}")
