@@ -5,6 +5,8 @@ import os
 import sys
 from pathlib import Path
 
+from brake import paths
+
 
 def frozen() -> bool:
     return bool(getattr(sys, "frozen", False))
@@ -57,7 +59,11 @@ def agent_command() -> list[str]:
 
 
 def lockout_command(args: list[str] | None = None) -> list[str]:
-    return exe_command("BrakeLockout.exe", "brake.lockout", args=args, windowless=True)
+    # Pin the service's canonical runtime directory into the child command.
+    # This keeps the scanner and lockout process on the same state.json and
+    # lockout.json even if the child's inherited environment differs.
+    pinned_args = ["--data-dir", str(paths.data_dir()), *(args or [])]
+    return exe_command("BrakeLockout.exe", "brake.lockout", args=pinned_args, windowless=True)
 
 
 def service_command(args: list[str] | None = None) -> list[str]:

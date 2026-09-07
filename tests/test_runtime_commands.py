@@ -1,6 +1,7 @@
 """Runtime command selection for source vs packaged Brake launches."""
 from __future__ import annotations
 
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -36,13 +37,33 @@ def test_packaged_commands_use_brake_named_exes() -> None:
     def check() -> None:
         assert runtime.agent_command()[0].endswith("BrakeAgent.exe")
         assert runtime.boot_command()[0].endswith("BrakeBoot.exe")
-        assert runtime.lockout_command(["--duration", "1"])[0].endswith("BrakeLockout.exe")
-        assert runtime.lockout_command(["--duration", "1"])[1:] == ["--duration", "1"]
+        lockout = runtime.lockout_command(["--duration", "1"])
+        assert lockout[0].endswith("BrakeLockout.exe")
+        assert lockout[1:3] == ["--data-dir", str(runtime.paths.data_dir())]
+        assert lockout[3:] == ["--duration", "1"]
         assert runtime.service_command(["debug"])[0].endswith("BrakeService.exe")
         assert runtime.watchdog_command(["debug"])[0].endswith("BrakeWatchdog.exe")
 
     _with_frozen_app(root, check)
     print("  [ok] packaged commands use Brake-named executables")
+
+
+def test_lockout_command_pins_runtime_data_directory() -> None:
+    from brake import runtime
+
+    original = os.environ.get("BRAKE_DATA_DIR")
+    data_dir = Path(tempfile.mkdtemp(prefix="brake-runtime-state-"))
+    try:
+        os.environ["BRAKE_DATA_DIR"] = str(data_dir)
+        command = runtime.lockout_command(["--duration", "60"])
+    finally:
+        if original is None:
+            os.environ.pop("BRAKE_DATA_DIR", None)
+        else:
+            os.environ["BRAKE_DATA_DIR"] = original
+
+    assert command[-4:] == ["--data-dir", str(data_dir), "--duration", "60"]
+    print("  [ok] lockout child receives the scanner's canonical data directory")
 
 
 def test_packaged_autostart_uses_brake_boot_exe() -> None:
@@ -63,6 +84,7 @@ def test_packaged_autostart_uses_brake_boot_exe() -> None:
 def main() -> int:
     tests = [
         test_packaged_commands_use_brake_named_exes,
+        test_lockout_command_pins_runtime_data_directory,
         test_packaged_autostart_uses_brake_boot_exe,
     ]
     for fn in tests:

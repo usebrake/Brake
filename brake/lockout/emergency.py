@@ -83,4 +83,9 @@ def apply_lockout_recovery(
         return False, "lockout_unavailable", None
     if record is None:
         return False, "no_active_lockout", None
+    _log.info(
+        "Lockout recovery accepted and recorded (lockout_started_at=%s, data_dir=%s).",
+        active.started_at,
+        state_store.state_path.parent,
+    )
     return True, LOCKOUT_RECOVERY_MESSAGE, record.end_dt()
