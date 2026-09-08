@@ -5,7 +5,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$IconPath,
 
-    [string]$Version = "0.1.7.0",
+    [string]$Version = "0.1.8.0",
     [string]$FileDescription = "Brake",
     [string]$ProductName = "Brake",
     [string]$CompanyName = "usebrake",

@@ -146,3 +146,6 @@ class IPCClient:
             Command.LOCKOUT_RECOVERY,
             recovery_code=recovery_code,
         )
+
+    def clear_expired_lockout(self) -> Dict[str, Any]:
+        return self.call(Command.CLEAR_EXPIRED_LOCKOUT)

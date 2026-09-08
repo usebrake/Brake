@@ -1,7 +1,7 @@
 #define MyAppName "Brake"
 #define MyAppVersion GetEnv("BRAKE_BUILD_VERSION")
 #if MyAppVersion == ""
-#define MyAppVersion "0.1.7-beta"
+#define MyAppVersion "0.1.8-beta"
 #endif
 #define MyAppPublisher "UseBrake"
 #define MyAppExeName "Brake.exe"
@@ -15,9 +15,9 @@ AppPublisher={#MyAppPublisher}
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoDescription=Brake Setup
 VersionInfoProductName=Brake
-VersionInfoProductVersion=0.1.7.0
+VersionInfoProductVersion=0.1.8.0
 VersionInfoTextVersion={#MyAppVersion}
-VersionInfoVersion=0.1.7.0
+VersionInfoVersion=0.1.8.0
 DefaultDirName={autopf}\\Brake
 DefaultGroupName=Brake
 DisableProgramGroupPage=yes

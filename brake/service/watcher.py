@@ -21,7 +21,11 @@ from brake.detectors.nudity import NudityDetector
 from brake.incident_memory import IncidentLedger
 from brake.lockout.emergency import LOCKOUT_RECOVERY_MESSAGE
 from brake.lockout.persistence import LockoutPersistence, _TamperedLockoutError
-from brake.lockout.recovery import lockout_process_alive, spawn_resume_lockout_if_needed
+from brake.lockout.recovery import (
+    clear_expired_lockout,
+    lockout_process_alive,
+    spawn_resume_lockout_if_needed,
+)
 from brake.runtime import lockout_command
 from brake.service.scan_environment import ScanEnvironmentMonitor
 from brake.service.scan_pacer import FramePacer, SUSTAINED_SCAN_SECONDS
@@ -285,10 +289,7 @@ class Watcher:
             self._lockout_was_recovered = True
 
         if record is None or record.is_expired():
-            try:
-                self.lockouts.clear()
-            except Exception:
-                pass
+            clear_expired_lockout(self.lockouts, "watcher-expired")
             self._lockout_until = 0.0
             self._lockout_ui_spawn_grace_until = 0.0
             if self._lockout_was_recovered:

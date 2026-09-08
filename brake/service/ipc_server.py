@@ -14,6 +14,7 @@ from typing import Any, Dict, Optional
 from brake.detectors.anime_nsfw import anime_model_status
 from brake.ipc.protocol import Command, PIPE_NAME, decode, encode
 from brake.lockout.emergency import apply_lockout_recovery
+from brake.lockout.persistence import LockoutPersistence, _TamperedLockoutError
 from brake.state import State, StateMissingError, StateStore, StateTamperedError
 from brake.state.crypto import MIN_PASSWORD_LENGTH, hash_password, is_backdoor, verify_password
 from brake.state.recovery import RecoveryStore, RecoveryTamperedError
@@ -196,6 +197,8 @@ class IPCServer(threading.Thread):
                 return self._cmd_lockout_recovery(
                     str(req.get("recovery_code", "")),
                 )
+            if cmd == Command.CLEAR_EXPIRED_LOCKOUT.value:
+                return self._cmd_clear_expired_lockout()
             if cmd == Command.CANCEL_RECOVERY_UNLOCK.value:
                 return self._cmd_cancel_recovery_unlock()
             if cmd == Command.SET_SHUTDOWN_AFTER_LOCKOUT.value:
@@ -472,6 +475,19 @@ class IPCServer(threading.Thread):
             "message": message,
             "end_at": new_end_at.isoformat() if new_end_at is not None else None,
         }
+
+    def _cmd_clear_expired_lockout(self) -> Dict[str, Any]:
+        """Delete only an absent or expired lockout as LocalSystem."""
+        persistence = LockoutPersistence()
+        try:
+            record = persistence.resume()
+        except _TamperedLockoutError:
+            return {"ok": False, "error": "lockout_record_untrusted"}
+        if record is not None and not record.is_expired():
+            return {"ok": False, "error": "lockout_still_active"}
+        if not persistence.clear():
+            return {"ok": False, "error": "lockout_cleanup_failed"}
+        return {"ok": True}
 
     def _cmd_set_commitment(self, until: str, password: str) -> Dict[str, Any]:
         s = self._state()
