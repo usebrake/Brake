@@ -1,4 +1,4 @@
-# Brake v0.1.7-beta Windows Beta
+# Brake v0.1.8-beta Windows Beta
 
 Free source-available Windows technical beta.
 
@@ -13,6 +13,8 @@ Free source-available Windows technical beta.
 - Lockout recovery diagnostics record the resolved state directory and recovery timing without logging recovery codes.
 - Lockout recovery now runs through the privileged Brake service, so successful uses are recorded in protected state and the scanner observes the shortened recovery timer immediately.
 - A recovery failure can no longer terminate the lockout overlay or leave scanning paused until the original lockout timer expires.
+- Expired service-owned lockout records are now cleared by the privileged service instead of the user-session agent.
+- A denied expired-record cleanup can no longer crash and restart the Brake agent every few seconds.
 
 ## Current Distribution
 

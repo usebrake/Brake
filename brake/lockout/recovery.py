@@ -14,6 +14,7 @@ import sys
 import time
 
 from brake import paths
+from brake.ipc.client import IPCClient, IPCError
 from brake.lockout.persistence import LockoutPersistence, _TamperedLockoutError
 from brake.runtime import app_dir, lockout_command
 
@@ -87,7 +88,33 @@ def active_lockout_exists() -> bool:
     if record is None:
         return False
     if record.is_expired():
-        persist.clear()
+        clear_expired_lockout(persist, "active-check")
+        return False
+    return True
+
+
+def clear_expired_lockout(
+    persistence: LockoutPersistence | None = None,
+    source: str = "unknown",
+) -> bool:
+    """Remove an expired record directly or through the privileged service."""
+    persist = persistence or LockoutPersistence()
+    try:
+        if persist.clear() is not False:
+            return True
+    except OSError as e:
+        _log.warning("Direct expired lockout cleanup failed from %s: %s", source, e)
+    try:
+        response = IPCClient(timeout_ms=2000).clear_expired_lockout()
+    except IPCError as e:
+        _log.warning("Could not request expired lockout cleanup from %s: %s", source, e)
+        return False
+    if not response.get("ok"):
+        _log.warning(
+            "Expired lockout cleanup was rejected from %s: %s",
+            source,
+            response.get("error", "unknown_error"),
+        )
         return False
     return True
 
@@ -136,7 +163,7 @@ def spawn_resume_lockout_if_needed(source: str = "unknown") -> bool:
         if record is None:
             return False
         if record.is_expired():
-            persist.clear()
+            clear_expired_lockout(persist, source)
             return False
 
     if lockout_process_alive():

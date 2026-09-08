@@ -128,11 +128,15 @@ class LockoutPersistence:
             _log.critical("Lockout file unreadable: %s — caller should fail-secure.", e)
             raise _TamperedLockoutError(f"unreadable lockout file: {e}") from e
 
-    def clear(self) -> None:
+    def clear(self) -> bool:
         try:
             self.path.unlink()
         except FileNotFoundError:
-            pass
+            return True
+        except OSError as e:
+            _log.warning("Could not clear lockout record %s: %s", self.path, e)
+            return False
+        return True
 
     # --- internals ---
 

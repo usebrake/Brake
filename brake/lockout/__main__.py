@@ -29,7 +29,11 @@ from brake.ipc.client import IPCClient, IPCError
 from brake.lockout.countdown import Countdown
 from brake.lockout.emergency import LOCKOUT_RECOVERY_MESSAGE, lockout_recovery_available
 from brake.lockout.persistence import LockoutPersistence, _TamperedLockoutError
-from brake.lockout.recovery import clear_lockout_pid, write_lockout_pid
+from brake.lockout.recovery import (
+    clear_expired_lockout,
+    clear_lockout_pid,
+    write_lockout_pid,
+)
 from brake.lockout.window import LockoutApp
 from brake.test_mode import should_actually_shutdown
 
@@ -82,10 +86,7 @@ def _on_done(persist: LockoutPersistence, shutdown_on_done: bool):
                     should_shutdown = record.shutdown_on_done
             except _TamperedLockoutError:
                 should_shutdown = True
-        try:
-            persist.clear()
-        except Exception as e:
-            logging.exception("Failed to clear expired lockout record before shutdown: %s", e)
+        clear_expired_lockout(persist, "lockout-complete")
         if should_shutdown:
             _shutdown_windows()
     return done
@@ -150,7 +151,7 @@ def _run_resume() -> int:
         return _run_persistent(settings.lockout_duration_seconds, "TAMPER")
 
     if record is None or record.is_expired():
-        persist.clear()
+        clear_expired_lockout(persist, "lockout-resume")
         return 0
 
     cd = Countdown(end_at=record.end_dt())
