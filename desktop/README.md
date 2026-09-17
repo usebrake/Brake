@@ -34,6 +34,10 @@ npm run dev
 
 In development mode, Electron stores local state in `.brake-electron-dev-data/` inside the repo. That keeps it separate from installed state.
 
+## Demo Mode
+
+Use `Start Brake Demo.cmd` from the repository root for the isolated design and recording environment. Demo mode uses the production React interface with a local mock backend and does not start protection services or the detection agent. See `DEMO.md` for controls and credentials.
+
 ## Current Scope
 
 Electron is the primary control panel. The old PyQt control-panel shell is archived under `archive/legacy_pyqt_control_panel/`. PyQt still powers the lockout window and uninstall guard until those surfaces are replaced.

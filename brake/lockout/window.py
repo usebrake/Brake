@@ -14,6 +14,7 @@ from PyQt6.QtGui import QGuiApplication, QKeyEvent
 from PyQt6.QtWidgets import QApplication, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget
 
 from brake.gui.assets import lock_pixmap_teal_large
+from brake.demo_mode import is_demo_mode
 from brake.lockout.countdown import Countdown
 from brake.lockout.input_block import KeyboardBlocker
 
@@ -35,6 +36,7 @@ class _LockoutWindow(QWidget):
         self.countdown = countdown
         self.is_primary = is_primary
         self.on_recovery_submit = on_recovery_submit
+        self.demo_mode = is_demo_mode()
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
@@ -204,6 +206,10 @@ class _LockoutWindow(QWidget):
 
     # Swallow Alt+F4 / Esc / anything that asks us to close early.
     def closeEvent(self, event):
+        if self.demo_mode:
+            event.accept()
+            QTimer.singleShot(0, QApplication.quit)
+            return
         if not self.countdown.is_done():
             event.ignore()
             self.showFullScreen()
@@ -213,6 +219,10 @@ class _LockoutWindow(QWidget):
             event.accept()
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
+        if self.demo_mode and event.key() == Qt.Key.Key_Escape:
+            event.accept()
+            QApplication.quit()
+            return
         # belt-and-suspenders: Qt-level swallow even if kbd hook missed
         event.ignore()
 
@@ -255,7 +265,7 @@ class LockoutApp:
             win.raise_()
 
         # belt-and-suspenders kbd hook (Win+Tab+F4 etc.)
-        if os.environ.get("BRAKE_NO_KBD_HOOK", "0") != "1":
+        if not is_demo_mode() and os.environ.get("BRAKE_NO_KBD_HOOK", "0") != "1":
             try:
                 self._blocker = KeyboardBlocker()
                 self._blocker.install()

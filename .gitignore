@@ -30,6 +30,7 @@ recovery.json
 local_state/
 .brake-dev-data/
 .brake-electron-dev-data/
+.brake-demo-data/
 .brake-recovery-test-data/
 logs/
 models/*.onnx

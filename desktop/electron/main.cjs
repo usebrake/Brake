@@ -2,14 +2,19 @@ const { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, shell } = require(
 const { execFile, spawn } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
+const { createDemoBackend } = require("./demo-backend.cjs");
 
 const isSourceInstalled = process.env.BRAKE_INSTALLED_SOURCE === "1";
+const isDemo = process.env.BRAKE_DEMO_MODE === "1";
 const isDev = !app.isPackaged && !isSourceInstalled;
 const repoRoot = path.resolve(__dirname, "../..");
 const installRoot = app.isPackaged ? path.dirname(process.execPath) : repoRoot;
 const pythonExe = process.env.BRAKE_PYTHON || process.env.PYTHON || "python";
 const bridgeExe = app.isPackaged ? path.join(installRoot, "BrakeBridge.exe") : "";
-const appUserModelId = "com.usebrake.Brake";
+const demoDataDir = process.env.BRAKE_DATA_DIR || path.join(repoRoot, ".brake-demo-data");
+const demoBackend = isDemo ? createDemoBackend(demoDataDir) : null;
+const appDisplayName = isDemo ? "Brake Demo" : "Brake";
+const appUserModelId = isDemo ? "com.usebrake.BrakeDemo" : "com.usebrake.Brake";
 let backendQueue = Promise.resolve();
 let mainWindow = null;
 let tray = null;
@@ -19,7 +24,11 @@ let isQuitting = false;
 const feedbackIssueUrl = "https://github.com/usebrake/Brake/issues";
 const feedbackEmailUrl = "mailto:hello.usebrake@gmail.com?subject=Brake%20beta%20feedback";
 
-app.setName("Brake");
+app.setName(appDisplayName);
+
+if (isDemo) {
+  app.setPath("userData", path.join(demoDataDir, "electron-profile"));
+}
 
 if (process.platform === "win32") {
   app.setAppUserModelId(appUserModelId);
@@ -58,6 +67,9 @@ function appIcon() {
 }
 
 function backend(command, args = [], timeoutMs = 5000) {
+  if (isDemo) {
+    return Promise.resolve(demoBackend.handle(command, args));
+  }
   const env = backendEnv();
   const exe = app.isPackaged ? bridgeExe : pythonExe;
   const exeArgs = app.isPackaged
@@ -109,7 +121,13 @@ function backend(command, args = [], timeoutMs = 5000) {
 
 function backendEnv() {
   const env = { ...process.env };
-  if (app.isPackaged) {
+  if (isDemo) {
+    env.BRAKE_DEMO_MODE = "1";
+    env.BRAKE_NO_DEV_AGENT = "1";
+    env.BRAKE_NO_KBD_HOOK = "1";
+    env.BRAKE_DATA_DIR = demoDataDir;
+    delete env.BRAKE_DESKTOP_DEV;
+  } else if (app.isPackaged) {
     const programData = process.env.ProgramData || "C:\\ProgramData";
     env.BRAKE_DATA_DIR = process.env.BRAKE_DATA_DIR || path.join(programData, "Brake");
     delete env.BRAKE_DESKTOP_DEV;
@@ -129,7 +147,7 @@ function backendEnv() {
 }
 
 function startDevAgent() {
-  if (!isDev || process.env.BRAKE_NO_DEV_AGENT === "1" || devAgent) return;
+  if (isDemo || !isDev || process.env.BRAKE_NO_DEV_AGENT === "1" || devAgent) return;
   // --parent-pid: the agent exits if this Electron process dies, so a
   // force-killed Electron cannot leave an orphaned agent scanning.
   devAgent = spawn(
@@ -160,7 +178,7 @@ function createWindow() {
     height: 680,
     minWidth: 860,
     minHeight: 600,
-    title: "Brake",
+    title: appDisplayName,
     backgroundColor: "#0b0e14",
     frame: false,
     thickFrame: false,
@@ -206,9 +224,29 @@ function showWindow() {
 
 function createTray() {
   tray = new Tray(appIcon());
-  tray.setToolTip("Brake");
-  tray.setContextMenu(Menu.buildFromTemplate([
-    { label: "Show Brake", click: showWindow },
+  tray.setToolTip(appDisplayName);
+  const template = [
+    { label: `Show ${appDisplayName}`, click: showWindow },
+  ];
+  if (isDemo) {
+    template.push(
+      {
+        label: "Demo scenarios",
+        submenu: [
+          { label: "Protection off", click: () => applyDemoScenario("protection-off") },
+          { label: "Protection on", click: () => applyDemoScenario("protection-on") },
+          { label: "Active commitment", click: () => applyDemoScenario("commitment") },
+          { label: "Recovery pending", click: () => applyDemoScenario("recovery-pending") },
+          { label: "Repair required", click: () => applyDemoScenario("repair-required") },
+          { label: "Sample detection log", click: () => applyDemoScenario("sample-logs") },
+          { type: "separator" },
+          { label: "Reset demo", click: () => applyDemoScenario("reset") }
+        ]
+      },
+      { label: "Show simulated lockout", click: () => launchDemoLockout() }
+    );
+  }
+  template.push(
     {
       label: "Send feedback",
       submenu: [
@@ -218,14 +256,41 @@ function createTray() {
     },
     { type: "separator" },
     {
-      label: "Quit Brake",
+      label: `Quit ${appDisplayName}`,
       click: () => {
         isQuitting = true;
         app.quit();
       }
     }
-  ]));
+  );
+  tray.setContextMenu(Menu.buildFromTemplate(template));
   tray.on("double-click", showWindow);
+}
+
+function applyDemoScenario(name) {
+  if (!demoBackend) return;
+  demoBackend.applyScenario(name);
+  showWindow();
+}
+
+function launchDemoLockout() {
+  if (!isDemo) return Promise.resolve({ ok: false, error: "demo_mode_required" });
+  const env = backendEnv();
+  const child = spawn(
+    pythonExe,
+    ["-m", "brake.lockout", "--duration", "30", "--reason", "DEMO", "--no-persist"],
+    {
+      cwd: repoRoot,
+      env,
+      windowsHide: true,
+      detached: false,
+      stdio: "ignore"
+    }
+  );
+  child.on("error", (error) => {
+    console.error("Could not open the simulated lockout:", error);
+  });
+  return Promise.resolve({ ok: true, data: demoBackend.status() });
 }
 
 function openFeedbackLink(kind) {
@@ -325,7 +390,7 @@ app.whenReady().then(async () => {
     ])
   ));
   ipcMain.handle("brake:test-lockout", async () => (
-    queuedBackend("test-lockout", ["--seconds", "10"])
+    isDemo ? launchDemoLockout() : queuedBackend("test-lockout", ["--seconds", "10"])
   ));
   ipcMain.handle("brake:feedback-issue", async () => openFeedbackLink("issue"));
   ipcMain.handle("brake:feedback-email", async () => openFeedbackLink("email"));

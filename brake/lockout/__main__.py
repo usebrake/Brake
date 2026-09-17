@@ -25,6 +25,7 @@ from pathlib import Path
 
 from brake import autostart, paths
 from brake.config import load_settings
+from brake.demo_mode import is_demo_mode
 from brake.ipc.client import IPCClient, IPCError
 from brake.lockout.countdown import Countdown
 from brake.lockout.emergency import LOCKOUT_RECOVERY_MESSAGE, lockout_recovery_available
@@ -39,6 +40,9 @@ from brake.test_mode import should_actually_shutdown
 
 
 def _shutdown_windows() -> None:
+    if is_demo_mode():
+        logging.warning("BRAKE_DEMO_MODE: Windows shutdown skipped.")
+        return
     if sys.platform != "win32":
         logging.warning("shutdown_on_done requested on non-Windows; ignoring.")
         return
@@ -184,6 +188,11 @@ def main(argv: list[str] | None = None) -> int:
     _pin_data_dir(args.data_dir)
     _configure_logging()
     logging.info("Lockout starting (pid=%s, data_dir=%s).", os.getpid(), paths.data_dir())
+
+    if is_demo_mode():
+        if args.duration is None:
+            return 0
+        return _run_transient(args.duration, args.reason, args.message, shutdown_on_done=False)
 
     if args.duration is None:
         return _run_resume()
