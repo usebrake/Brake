@@ -276,21 +276,48 @@ function applyDemoScenario(name) {
 function launchDemoLockout() {
   if (!isDemo) return Promise.resolve({ ok: false, error: "demo_mode_required" });
   const env = backendEnv();
-  const child = spawn(
-    pythonExe,
-    ["-m", "brake.lockout", "--duration", "30", "--reason", "DEMO", "--no-persist"],
-    {
-      cwd: repoRoot,
-      env,
-      windowsHide: true,
-      detached: false,
-      stdio: "ignore"
-    }
-  );
-  child.on("error", (error) => {
-    console.error("Could not open the simulated lockout:", error);
+  return new Promise((resolve) => {
+    let settled = false;
+    let stderr = "";
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+    const child = spawn(
+      pythonExe,
+      ["-m", "brake.lockout", "--duration", "10", "--reason", "DEMO", "--no-persist"],
+      {
+        cwd: repoRoot,
+        env,
+        windowsHide: true,
+        detached: false,
+        stdio: ["ignore", "ignore", "pipe"]
+      }
+    );
+    child.stderr?.setEncoding("utf8");
+    child.stderr?.on("data", (chunk) => {
+      stderr = `${stderr}${chunk}`.slice(-4000);
+    });
+    child.once("error", (error) => {
+      console.error("Could not open the simulated lockout:", error);
+      finish({ ok: false, error: "test_lockout_launch_failed" });
+    });
+    child.once("spawn", () => {
+      const startupTimer = setTimeout(() => {
+        finish({ ok: true, data: demoBackend.status() });
+      }, 750);
+      child.once("exit", (code, signal) => {
+        if (settled) {
+          if (code !== 0) console.error("Simulated lockout exited unexpectedly:", code, signal, stderr.trim());
+          return;
+        }
+        clearTimeout(startupTimer);
+        console.error("Simulated lockout failed during startup:", code, signal, stderr.trim());
+        finish({ ok: false, error: "test_lockout_launch_failed" });
+      });
+    });
   });
-  return Promise.resolve({ ok: true, data: demoBackend.status() });
 }
 
 function openFeedbackLink(kind) {

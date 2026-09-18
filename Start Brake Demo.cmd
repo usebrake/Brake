@@ -20,9 +20,21 @@ if errorlevel 1 (
 
 where py.exe >nul 2>nul
 if errorlevel 1 (
-  echo Brake Demo needs Python and PyQt6 for the simulated lockout screen.
+  echo Brake Demo needs Python for the simulated lockout screen.
   pause
   exit /b 1
+)
+
+py -c "import PyQt6, yaml" >nul 2>nul
+if errorlevel 1 (
+  echo Installing Brake Demo lockout dependencies. This only runs when they are missing.
+  py -m pip install --disable-pip-version-check PyQt6 PyYAML
+  if errorlevel 1 (
+    echo.
+    echo Brake Demo could not install PyQt6 and PyYAML.
+    pause
+    exit /b 1
+  )
 )
 
 set "BRAKE_DEMO_MODE=1"

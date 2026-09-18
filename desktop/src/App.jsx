@@ -1311,9 +1311,14 @@ export default function App() {
     }
   };
   const testLockout = () => {
-    window.brake?.testLockout?.().then((response) => {
-      applyBackendResponse(response);
-    });
+    const request = window.brake?.testLockout;
+    if (!request) {
+      setNotice("Test lockout is available in the desktop app.");
+      return;
+    }
+    request()
+      .then((response) => applyBackendResponse(response))
+      .catch(() => setNotice(humanError("test_lockout_launch_failed")));
   };
   return (
     <main className="app-shell">
@@ -1511,7 +1516,7 @@ export default function App() {
                 subtitle="Choose what happens when a lockout ends."
                 actions={
                   <Button variant="secondary" icon={ShieldCheck} disabled={status.failSecure} onClick={testLockout}>
-                    Test lockout
+                    Test lockout (10s)
                   </Button>
                 }
               >
@@ -1650,6 +1655,7 @@ function humanError(error) {
     model_package_incomplete: "The illustrated detector package was incomplete. Try again later.",
     model_package_untrusted: "The illustrated detector package had unexpected files. Try again later.",
     model_download_incomplete: "The detector download did not finish cleanly. Try again.",
+    test_lockout_launch_failed: "The test lockout could not start. Restart Brake Demo and try again.",
   };
   return messages[error] || error;
 }
