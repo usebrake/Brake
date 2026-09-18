@@ -1,5 +1,6 @@
 import {
   Activity,
+  Clock3,
   Download,
   Github,
   Info,
@@ -1305,33 +1306,37 @@ export default function App() {
             />
             <div className="overview-single">
               <section className="overview-controls" aria-label="Overview controls">
-                <SettingRow
-                  title="Lockout length"
-                  aside={
-                    <div className="stepper-control">
-                      <button aria-label="Decrease lockout length" disabled={status.failSecure} onClick={() => changeDuration(-1)}>
-                        <Minus size={14} />
-                      </button>
-                      <label>
-                        <input
-                          aria-label="Lockout length in minutes"
-                          inputMode="numeric"
-                          min="1"
-                          max="60"
-                          type="number"
-                          disabled={status.failSecure}
-                          value={status.lockoutDurationMinutes}
-                          onChange={(event) => changeDurationInput(event.target.value)}
-                          onBlur={normalizeDurationInput}
-                        />
-                        <span>min</span>
-                      </label>
-                      <button aria-label="Increase lockout length" disabled={status.failSecure} onClick={() => changeDuration(1)}>
-                        <Plus size={14} />
-                      </button>
+                <div className="lockout-length-row">
+                  <div className="lockout-length-copy">
+                    <Clock3 size={24} strokeWidth={1.8} aria-hidden="true" />
+                    <div>
+                      <div className="setting-title">Lockout length</div>
+                      <div className="setting-description">Choose how long Brake locks the screen after explicit content is detected.</div>
                     </div>
-                  }
-                />
+                  </div>
+                  <div className="stepper-control overview-stepper">
+                    <button aria-label="Decrease lockout length" disabled={status.failSecure} onClick={() => changeDuration(-1)}>
+                      <Minus size={17} />
+                    </button>
+                    <label>
+                      <input
+                        aria-label="Lockout length in minutes"
+                        inputMode="numeric"
+                        min="1"
+                        max="60"
+                        type="number"
+                        disabled={status.failSecure}
+                        value={status.lockoutDurationMinutes}
+                        onChange={(event) => changeDurationInput(event.target.value)}
+                        onBlur={normalizeDurationInput}
+                      />
+                      <span>min</span>
+                    </label>
+                    <button aria-label="Increase lockout length" disabled={status.failSecure} onClick={() => changeDuration(1)}>
+                      <Plus size={17} />
+                    </button>
+                  </div>
+                </div>
               </section>
             </div>
           </>
