@@ -1505,7 +1505,16 @@ export default function App() {
                   }
                 />
               </Card>
-              <Card icon={Power} title="Lockout behavior" subtitle="Choose what happens when a lockout ends.">
+              <Card
+                icon={Power}
+                title="Lockout behavior"
+                subtitle="Choose what happens when a lockout ends."
+                actions={
+                  <Button variant="secondary" icon={ShieldCheck} disabled={status.failSecure} onClick={testLockout}>
+                    Test lockout
+                  </Button>
+                }
+              >
                 <SettingRow
                   title="Shutdown after lockout"
                   description="When on, Windows shuts down after a full lockout timer ends. During commitment, this cannot be turned off."
@@ -1520,11 +1529,6 @@ export default function App() {
                     </button>
                   }
                 />
-                <div className="card-actions">
-                  <Button variant="secondary" icon={ShieldCheck} disabled={status.failSecure} onClick={testLockout}>
-                    Test lockout
-                  </Button>
-                </div>
               </Card>
             </div>
           </>
