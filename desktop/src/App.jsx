@@ -222,11 +222,7 @@ function StatusPanel({ status, now, onToggleProtection, onCancelRecoveryUnlock }
     ? "Brake could not verify its settings. Use your recovery code to repair protection."
     : recoveryLeft
     ? "Recovery accepted. Brake will turn protection off after the cooldown."
-    : committed
-    ? ""
-    : enabled
-      ? "Screen checks active."
-      : "Screen checks off.";
+    : "";
 
   return (
     <section className={`status-panel ${state}`}>
@@ -925,13 +921,9 @@ export default function App() {
       if (response?.ok) {
         applyBackendResponse(response);
         setPasswordPrompt(null);
-        if (mode === "enable") {
-          setNotice("Protection is active.");
-        } else if (response.data?.recoveryUnlockPending) {
+        if (mode === "disable" && response.data?.recoveryUnlockPending) {
           const delay = Number(response.data?.recoveryUnlockDelayMinutes || status.recoveryUnlockDelayMinutes) || 15;
           setNotice(`Recovery code accepted. Protection will turn off after the ${delay}-minute cooldown.`);
-        } else {
-          setNotice("Protection is off.");
         }
         return;
       }
@@ -995,9 +987,9 @@ export default function App() {
       if (response?.ok) {
         applyBackendResponse(response);
         setCommitmentPrompt(null);
-        setNotice(cancelsPendingRecovery
-          ? "Commitment is active. The pending emergency unlock was canceled."
-          : "Commitment is active.");
+        if (cancelsPendingRecovery) {
+          setNotice("Pending emergency unlock canceled.");
+        }
         return;
       }
       setCommitmentPrompt((current) => ({
@@ -1151,7 +1143,6 @@ export default function App() {
     }
     if (applyBackendResponse(response)) {
       setSettingsPasswordPrompt(null);
-      setNotice("Recovery settings updated.");
     }
   };
   const saveRecoverySettingsSoon = (next, password = "") => {
@@ -1228,7 +1219,6 @@ export default function App() {
       }
       if (applyBackendResponse(response)) {
         setSettingsPasswordPrompt(null);
-        setNotice("Lockout shutdown setting updated.");
       }
     });
   };
@@ -1270,9 +1260,7 @@ export default function App() {
   };
   const testLockout = () => {
     window.brake?.testLockout?.().then((response) => {
-      if (applyBackendResponse(response)) {
-        setNotice("Test lockout started.");
-      }
+      applyBackendResponse(response);
     });
   };
   return (
