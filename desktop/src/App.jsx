@@ -237,6 +237,10 @@ function StatusPanel({ status, now, onToggleProtection, onCancelRecoveryUnlock }
         title={recoveryLeft ? "Cancel emergency unlock cooldown" : failSecure ? "Repair protection" : enabled ? "Turn off protection" : "Turn on protection"}
         onClick={recoveryLeft ? onCancelRecoveryUnlock : onToggleProtection}
       >
+        <svg className="status-ring" viewBox="0 0 132 132" aria-hidden="true">
+          <circle className="status-ring-track" cx="66" cy="66" r="62.5" />
+          <circle className="status-ring-progress" cx="66" cy="66" r="62.5" />
+        </svg>
         {enabled || committed ? (
           <ShieldCheck size={44} strokeWidth={1.8} />
         ) : (
