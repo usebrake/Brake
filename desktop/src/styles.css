@@ -220,6 +220,40 @@ button {
   min-height: 0;
   overflow: auto;
   padding: 22px 24px 26px;
+  scrollbar-color: rgba(194, 198, 207, 0.38) transparent;
+  scrollbar-width: thin;
+}
+
+.content::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.content::-webkit-scrollbar-thumb {
+  min-height: 48px;
+  background: rgba(194, 198, 207, 0.34);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+  border-radius: 999px;
+}
+
+.content::-webkit-scrollbar-thumb:hover {
+  background: rgba(194, 198, 207, 0.52);
+  background-clip: padding-box;
+}
+
+.content::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.content::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 .page-head {
