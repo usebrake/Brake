@@ -1350,17 +1350,17 @@ export default function App() {
               <h1>Illustrated</h1>
               {notice ? <p className="notice">{notice}</p> : null}
             </div>
-            <Card icon={ScanEye} title="Image content detection" subtitle="Manage detection for illustrated and animated images.">
+            <Card icon={ScanEye} title="Image content detection" subtitle="Manage detection for drawings and animations.">
               {status.animeModelStatus !== "ready" ? (
                 <SettingRow
                   title="Detector package"
-                  description="Install the local model used to scan illustrated and animated images."
+                  description="Install the local model used to scan drawings and animations."
                   aside={<Badge state="">{animeStatusCopy(status.animeModelStatus)}</Badge>}
                 />
               ) : null}
               <SettingRow
-                title="Detect illustrated images"
-                description="Scans illustrations, animations, and other non-photographic content."
+                title="Image detection"
+                description="Scans drawings, animations, and other non-photographic content."
                 aside={
                   <button
                     className={`toggle-action ${status.animeDetectionEnabled ? "active" : ""}`}
