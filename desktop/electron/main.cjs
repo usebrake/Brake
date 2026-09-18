@@ -286,7 +286,7 @@ function launchDemoLockout() {
     };
     const child = spawn(
       pythonExe,
-      ["-m", "brake.lockout", "--duration", "10", "--reason", "DEMO", "--no-persist"],
+      ["-m", "brake.lockout.demo", "--duration", "10"],
       {
         cwd: repoRoot,
         env,

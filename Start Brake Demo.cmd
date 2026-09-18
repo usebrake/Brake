@@ -25,13 +25,13 @@ if errorlevel 1 (
   exit /b 1
 )
 
-py -c "import PyQt6, yaml" >nul 2>nul
+py -c "import PyQt6" >nul 2>nul
 if errorlevel 1 (
-  echo Installing Brake Demo lockout dependencies. This only runs when they are missing.
-  py -m pip install --disable-pip-version-check PyQt6 PyYAML
+  echo Installing the Brake Demo lockout screen dependency. This only runs when it is missing.
+  py -m pip install --disable-pip-version-check PyQt6
   if errorlevel 1 (
     echo.
-    echo Brake Demo could not install PyQt6 and PyYAML.
+    echo Brake Demo could not install PyQt6.
     pause
     exit /b 1
   )
