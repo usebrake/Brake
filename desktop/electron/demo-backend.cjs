@@ -218,7 +218,7 @@ function createDemoBackend(dataDir) {
         recoveryShown: true,
         events: [
           {
-            timestamp: new Date().toISOString(),
+            ts: new Date().toISOString(),
             detector: "nudity",
             triggered: true,
             severity: "hard",
