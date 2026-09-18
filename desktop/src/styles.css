@@ -419,15 +419,40 @@ button {
 
 .overview-controls {
   min-width: 0;
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-1);
-  overflow: hidden;
+  background: transparent;
+  border-top: 1px solid var(--border-strong);
+  border-bottom: 1px solid var(--border-strong);
 }
 
-.overview-controls .setting-row {
-  min-height: 58px;
+.lockout-length-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  min-height: 96px;
+  padding: 20px 28px;
+}
+
+.lockout-length-copy {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.lockout-length-copy > svg {
+  flex: 0 0 auto;
+  color: var(--fg-2);
+}
+
+.lockout-length-copy .setting-title {
+  font-size: 15px;
+  font-weight: 560;
+}
+
+.lockout-length-copy .setting-description {
+  margin-top: 5px;
+  font-size: 13px;
 }
 
 .advanced-stack {
@@ -460,7 +485,7 @@ button {
   flex: 0 0 30px;
   color: var(--fg-2);
   background: var(--surface-2);
-  border: 1px solid var(--border-faint);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
 }
 
@@ -595,12 +620,13 @@ button {
 .stepper-control {
   display: inline-flex;
   align-items: center;
-  height: 36px;
-  overflow: hidden;
+  height: 44px;
+  gap: 3px;
+  padding: 4px;
   color: var(--fg-1);
-  background: var(--surface-2);
+  background: transparent;
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
+  border-radius: 999px;
   font-family: "Geist Mono", "Consolas", monospace;
   font-size: 13px;
 }
@@ -611,18 +637,19 @@ button {
   width: 34px;
   height: 34px;
   color: var(--fg-3);
-  background: transparent;
+  background: var(--surface-3);
+  border-radius: 50%;
   cursor: pointer;
 }
 
 .stepper-control button:hover {
   color: var(--fg-1);
-  background: var(--surface-3);
+  background: #2a3140;
 }
 
 .stepper-control button:disabled {
   color: var(--fg-4);
-  background: transparent;
+  background: var(--surface-2);
   cursor: not-allowed;
 }
 
@@ -631,11 +658,9 @@ button {
   align-items: center;
   justify-content: center;
   gap: 5px;
-  min-width: 96px;
+  min-width: 90px;
   height: 34px;
-  border-left: 1px solid var(--border-faint);
-  border-right: 1px solid var(--border-faint);
-  padding: 0 10px;
+  padding: 0 8px;
 }
 
 .stepper-control input {
@@ -664,6 +689,50 @@ button {
   color: var(--fg-3);
   font-family: "Geist Mono", "Consolas", monospace;
   font-size: 13px;
+}
+
+.overview-stepper {
+  height: 52px;
+  flex: 0 0 auto;
+  gap: 4px;
+  padding: 5px;
+  background: transparent;
+  border-color: var(--border-strong);
+  border-radius: 999px;
+}
+
+.overview-stepper button {
+  width: 40px;
+  height: 40px;
+  background: var(--surface-3);
+  border-radius: 50%;
+}
+
+.overview-stepper button:hover {
+  background: #2a3140;
+}
+
+.overview-stepper button:disabled {
+  background: var(--surface-2);
+}
+
+.overview-stepper label {
+  min-width: 106px;
+  height: 40px;
+  padding: 0 12px;
+  border: 0;
+}
+
+.overview-stepper input {
+  width: 36px;
+  height: 40px;
+  line-height: 40px;
+  font-size: 16px;
+  font-weight: 620;
+}
+
+.overview-stepper label span {
+  font-size: 14px;
 }
 
 .radio-row {
