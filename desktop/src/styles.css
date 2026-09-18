@@ -1161,16 +1161,16 @@ button {
 
 .guide {
   display: grid;
-  gap: 16px;
+  gap: 14px;
 }
 
 .guide-section {
   display: grid;
-  gap: 7px;
+  gap: 9px;
 }
 
 .guide-section + .guide-section {
-  padding-top: 16px;
+  padding-top: 14px;
   border-top: 1px solid var(--border-faint);
 }
 
@@ -1181,17 +1181,22 @@ button {
   font-weight: 620;
 }
 
-.guide-section strong {
-  color: var(--gold);
-  font-weight: 620;
-}
-
-.guide-section p {
+.guide-list {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding-left: 18px;
   color: var(--fg-2);
+  font-size: 13px;
+  line-height: 1.45;
 }
 
-.guide-section p + p {
-  margin-top: 6px;
+.guide-list li {
+  padding-left: 3px;
+}
+
+.guide-list li::marker {
+  color: var(--fg-4);
 }
 
 .password-form {

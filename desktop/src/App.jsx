@@ -336,7 +336,7 @@ function RecoveryUsesSelect({ value, onChange, disabled = false }) {
   );
 }
 
-function Modal({ title, children, onClose }) {
+function Modal({ title, subtitle = "Local accountability for explicit content.", children, onClose }) {
   return (
     <div className="modal-scrim" role="presentation" onMouseDown={onClose}>
       <section className="modal" role="dialog" aria-modal="true" aria-label={title} onMouseDown={(event) => event.stopPropagation()}>
@@ -346,7 +346,7 @@ function Modal({ title, children, onClose }) {
           </span>
           <div>
             <h2>{title}</h2>
-            <p>Local accountability for explicit content.</p>
+            {subtitle ? <p>{subtitle}</p> : null}
           </div>
           <button className="icon-button" aria-label="Close" onClick={onClose}>
             <X size={18} />
@@ -647,51 +647,98 @@ function GuideSection({ title, children }) {
   );
 }
 
+function GuideList({ items }) {
+  return (
+    <ul className="guide-list">
+      {items.map((item) => <li key={item}>{item}</li>)}
+    </ul>
+  );
+}
+
 function GuideModal({ tab, status, onClose }) {
   const duration = Number(status.lockoutDurationMinutes) || 1;
   const title = tab === "advanced"
     ? "How advanced settings work"
     : tab === "illustrated"
       ? "How illustrated detection works"
-      : "How Brake works";
+      : tab === "logs"
+        ? "How detection history works"
+        : "How Brake works";
 
   return (
-    <Modal title={title} onClose={onClose}>
+    <Modal title={title} subtitle="" onClose={onClose}>
       {tab === "overview" ? (
         <div className="guide">
-          <GuideSection title="What Brake does">
-            <p>Brake checks your screen locally. Screenshots are analyzed on this device and are not uploaded, saved, or sent anywhere.</p>
-            <p>Brake watches and reacts; it does not block websites or apps. The goal is to let you use the computer normally while adding consequences when risky content appears.</p>
+          <GuideSection title="Screen checks">
+            <GuideList items={[
+              "Brake checks your screen locally. Images are not uploaded or saved.",
+              "It reacts to what appears on screen. It does not block websites or apps."
+            ]} />
           </GuideSection>
-          <GuideSection title="When protection is on">
-            <p>Clear explicit content triggers the full lockout. Your current lockout length is {duration} {duration === 1 ? "minute" : "minutes"}. Repeated full lockouts within 24 hours can make the next lockout longer.</p>
-            <p>If shutdown after lockout is enabled, Windows shuts down and force-closes open apps when the lockout ends. After restart, Brake goes back to normal protection with the 24-hour memory still active.</p>
+          <GuideSection title="Lockouts">
+            <GuideList items={[
+              `A detection starts a ${duration}-minute lockout.`,
+              "Repeated lockouts within 24 hours may make the next one longer.",
+              "If shutdown is enabled, Windows shuts down when the timer ends."
+            ]} />
           </GuideSection>
           <GuideSection title="Commitment">
-            <p>Without a commitment, your password can turn protection off anytime. A commitment locks protection in so that password cannot walk it back until the commitment ends.</p>
-            <p>During commitment, you can make Brake stricter, but not easier to bypass. The recovery code can reset a forgotten password or start the configured emergency cooldown before protection turns off.</p>
+            <GuideList items={[
+              "Without a commitment, your password can turn protection off.",
+              "During a commitment, settings can become stricter but not easier to bypass.",
+              "Your recovery code can reset the password or start the configured cooldown."
+            ]} />
           </GuideSection>
         </div>
       ) : tab === "illustrated" ? (
         <div className="guide">
-          <GuideSection title="Illustrated detection">
-            <p>The illustrated detector uses a separate local model for anime, drawings, and rendered explicit content.</p>
-            <p>When it is off, Brake ignores illustrated detections. When it is on, high-confidence illustrated explicit content can trigger the full lockout.</p>
+          <GuideSection title="Image detection">
+            <GuideList items={[
+              "A separate local model scans drawings, animations, and rendered images.",
+              "When enabled, high-confidence matches can trigger a full lockout.",
+              "When disabled, Brake ignores these image types."
+            ]} />
           </GuideSection>
-          <GuideSection title="Model download">
-            <p>The model downloads once to this computer and runs locally. Screenshots are not uploaded, saved, or sent anywhere.</p>
+          <GuideSection title="Local model">
+            <GuideList items={[
+              "The detector package downloads once to this computer.",
+              "Scanning stays on-device. Screenshots are not uploaded or saved."
+            ]} />
+          </GuideSection>
+        </div>
+      ) : tab === "logs" ? (
+        <div className="guide">
+          <GuideSection title="Detection history">
+            <GuideList items={[
+              "Recent detector events appear here.",
+              "Each entry shows the detector, severity, confidence, and action taken."
+            ]} />
+          </GuideSection>
+          <GuideSection title="Controls">
+            <GuideList items={[
+              "Refresh reloads the latest local events.",
+              "Clear removes the detection history from this device."
+            ]} />
           </GuideSection>
         </div>
       ) : (
         <div className="guide">
-          <GuideSection title="Recovery code">
-            <p>The recovery code can reset a forgotten password or start the configured emergency cooldown before protection turns off.</p>
+          <GuideSection title="Recovery">
+            <GuideList items={[
+              "The recovery code can reset a forgotten password or start the emergency cooldown.",
+              "Lockout recovery controls whether the code can shorten an active lockout and how often."
+            ]} />
           </GuideSection>
-          <GuideSection title="Lockout consequences">
-            <p>The shutdown setting controls whether a full lockout shuts Windows down when the timer ends. During commitment, you cannot turn that consequence off.</p>
+          <GuideSection title="Lockout behavior">
+            <GuideList items={[
+              "Shutdown controls whether Windows turns off when a full lockout ends.",
+              "During commitment, settings cannot be changed to make protection easier to bypass."
+            ]} />
           </GuideSection>
-          <GuideSection title="Testing">
-            <p>The test lockout lets you check the full-screen overlay without waiting for a detection.</p>
+          <GuideSection title="Test lockout">
+            <GuideList items={[
+              "Use Test lockout to preview the full-screen lockout experience."
+            ]} />
           </GuideSection>
         </div>
       )}
