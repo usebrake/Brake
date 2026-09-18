@@ -1,5 +1,6 @@
 import {
   Activity,
+  Clock3,
   Download,
   Github,
   Info,
@@ -167,9 +168,11 @@ function confidenceCopy(confidence) {
 
 function DetectionLogs({ events, loading, onRefresh, onClear }) {
   return (
-    <Card icon={ScrollText} title="Detection events">
-      <div className="log-toolbar">
-        <span>{events.length ? `${events.length} recent ${events.length === 1 ? "event" : "events"}` : loading ? "Loading..." : "No detection events yet"}</span>
+    <Card
+      icon={ScrollText}
+      title="Detection history"
+      subtitle="Review when detector checks were triggered."
+      actions={
         <div className="log-actions">
           <button className="pill-action" onClick={onRefresh}>Refresh</button>
           <button className="pill-action danger" onClick={onClear} disabled={loading || !events.length}>
@@ -177,7 +180,8 @@ function DetectionLogs({ events, loading, onRefresh, onClear }) {
             <span>Clear</span>
           </button>
         </div>
-      </div>
+      }
+    >
       {events.length ? (
         <div className="log-list">
           {events.map((event, index) => (
@@ -222,15 +226,10 @@ function StatusPanel({ status, now, onToggleProtection, onCancelRecoveryUnlock }
     ? "Brake could not verify its settings. Use your recovery code to repair protection."
     : recoveryLeft
     ? "Recovery accepted. Brake will turn protection off after the cooldown."
-    : committed
-    ? ""
-    : enabled
-      ? "Screen checks active."
-      : "Screen checks off.";
+    : "";
 
   return (
     <section className={`status-panel ${state}`}>
-      <div className="status-rail" />
       <button
         className="status-orb"
         type="button"
@@ -238,6 +237,10 @@ function StatusPanel({ status, now, onToggleProtection, onCancelRecoveryUnlock }
         title={recoveryLeft ? "Cancel emergency unlock cooldown" : failSecure ? "Repair protection" : enabled ? "Turn off protection" : "Turn on protection"}
         onClick={recoveryLeft ? onCancelRecoveryUnlock : onToggleProtection}
       >
+        <svg className="status-ring" viewBox="0 0 132 132" aria-hidden="true">
+          <circle className="status-ring-track" cx="66" cy="66" r="62.5" />
+          <circle className="status-ring-progress" cx="66" cy="66" r="62.5" />
+        </svg>
         {enabled || committed ? (
           <ShieldCheck size={44} strokeWidth={1.8} />
         ) : (
@@ -254,7 +257,7 @@ function StatusPanel({ status, now, onToggleProtection, onCancelRecoveryUnlock }
   );
 }
 
-function Card({ icon: Icon, title, subtitle, children }) {
+function Card({ icon: Icon, title, subtitle, actions, children }) {
   return (
     <section className="card">
       <header className="card-head">
@@ -263,10 +266,11 @@ function Card({ icon: Icon, title, subtitle, children }) {
             <Icon size={17} />
           </span>
         ) : null}
-        <div>
+        <div className="card-head-copy">
           <h3>{title}</h3>
           {subtitle ? <p>{subtitle}</p> : null}
         </div>
+        {actions ? <div className="card-head-actions">{actions}</div> : null}
       </header>
       <div className="card-body">{children}</div>
     </section>
@@ -332,7 +336,7 @@ function RecoveryUsesSelect({ value, onChange, disabled = false }) {
   );
 }
 
-function Modal({ title, children, onClose }) {
+function Modal({ title, subtitle = "Local accountability for explicit content.", children, onClose }) {
   return (
     <div className="modal-scrim" role="presentation" onMouseDown={onClose}>
       <section className="modal" role="dialog" aria-modal="true" aria-label={title} onMouseDown={(event) => event.stopPropagation()}>
@@ -342,7 +346,7 @@ function Modal({ title, children, onClose }) {
           </span>
           <div>
             <h2>{title}</h2>
-            <p>Local accountability for explicit content.</p>
+            {subtitle ? <p>{subtitle}</p> : null}
           </div>
           <button className="icon-button" aria-label="Close" onClick={onClose}>
             <X size={18} />
@@ -643,51 +647,98 @@ function GuideSection({ title, children }) {
   );
 }
 
+function GuideList({ items }) {
+  return (
+    <ul className="guide-list">
+      {items.map((item) => <li key={item}>{item}</li>)}
+    </ul>
+  );
+}
+
 function GuideModal({ tab, status, onClose }) {
   const duration = Number(status.lockoutDurationMinutes) || 1;
   const title = tab === "advanced"
     ? "How advanced settings work"
     : tab === "illustrated"
       ? "How illustrated detection works"
-      : "How Brake works";
+      : tab === "logs"
+        ? "How detection history works"
+        : "How Brake works";
 
   return (
-    <Modal title={title} onClose={onClose}>
+    <Modal title={title} subtitle="" onClose={onClose}>
       {tab === "overview" ? (
         <div className="guide">
-          <GuideSection title="What Brake does">
-            <p>Brake checks your screen locally. Screenshots are analyzed on this device and are not uploaded, saved, or sent anywhere.</p>
-            <p>Brake watches and reacts; it does not block websites or apps. The goal is to let you use the computer normally while adding consequences when risky content appears.</p>
+          <GuideSection title="Screen checks">
+            <GuideList items={[
+              "Brake checks your screen locally. Images are not uploaded or saved.",
+              "It reacts to what appears on screen. It does not block websites or apps."
+            ]} />
           </GuideSection>
-          <GuideSection title="When protection is on">
-            <p>Clear explicit content triggers the full lockout. Your current lockout length is {duration} {duration === 1 ? "minute" : "minutes"}. Repeated full lockouts within 24 hours can make the next lockout longer.</p>
-            <p>If shutdown after lockout is enabled, Windows shuts down and force-closes open apps when the lockout ends. After restart, Brake goes back to normal protection with the 24-hour memory still active.</p>
+          <GuideSection title="Lockouts">
+            <GuideList items={[
+              `A detection starts a ${duration}-minute lockout.`,
+              "Repeated lockouts within 24 hours may make the next one longer.",
+              "If shutdown is enabled, Windows shuts down when the timer ends."
+            ]} />
           </GuideSection>
           <GuideSection title="Commitment">
-            <p>Without a commitment, your password can turn protection off anytime. A commitment locks protection in so that password cannot walk it back until the commitment ends.</p>
-            <p>During commitment, you can make Brake stricter, but not easier to bypass. The recovery code can reset a forgotten password or start the configured emergency cooldown before protection turns off.</p>
+            <GuideList items={[
+              "Without a commitment, your password can turn protection off.",
+              "During a commitment, settings can become stricter but not easier to bypass.",
+              "Your recovery code can reset the password or start the configured cooldown."
+            ]} />
           </GuideSection>
         </div>
       ) : tab === "illustrated" ? (
         <div className="guide">
-          <GuideSection title="Illustrated detection">
-            <p>The illustrated detector uses a separate local model for anime, drawings, and rendered explicit content.</p>
-            <p>When it is off, Brake ignores illustrated detections. When it is on, high-confidence illustrated explicit content can trigger the full lockout.</p>
+          <GuideSection title="Image detection">
+            <GuideList items={[
+              "A separate local model scans drawings, animations, and rendered images.",
+              "When enabled, high-confidence matches can trigger a full lockout.",
+              "When disabled, Brake ignores these image types."
+            ]} />
           </GuideSection>
-          <GuideSection title="Model download">
-            <p>The model downloads once to this computer and runs locally. Screenshots are not uploaded, saved, or sent anywhere.</p>
+          <GuideSection title="Local model">
+            <GuideList items={[
+              "The detector package downloads once to this computer.",
+              "Scanning stays on-device. Screenshots are not uploaded or saved."
+            ]} />
+          </GuideSection>
+        </div>
+      ) : tab === "logs" ? (
+        <div className="guide">
+          <GuideSection title="Detection history">
+            <GuideList items={[
+              "Recent detector events appear here.",
+              "Each entry shows the detector, severity, confidence, and action taken."
+            ]} />
+          </GuideSection>
+          <GuideSection title="Controls">
+            <GuideList items={[
+              "Refresh reloads the latest local events.",
+              "Clear removes the detection history from this device."
+            ]} />
           </GuideSection>
         </div>
       ) : (
         <div className="guide">
-          <GuideSection title="Recovery code">
-            <p>The recovery code can reset a forgotten password or start the configured emergency cooldown before protection turns off.</p>
+          <GuideSection title="Recovery">
+            <GuideList items={[
+              "The recovery code can reset a forgotten password or start the emergency cooldown.",
+              "Lockout recovery controls whether the code can shorten an active lockout and how often."
+            ]} />
           </GuideSection>
-          <GuideSection title="Lockout consequences">
-            <p>The shutdown setting controls whether a full lockout shuts Windows down when the timer ends. During commitment, you cannot turn that consequence off.</p>
+          <GuideSection title="Lockout behavior">
+            <GuideList items={[
+              "Shutdown controls whether Windows turns off when a full lockout ends.",
+              "During commitment, settings cannot be changed to make protection easier to bypass."
+            ]} />
           </GuideSection>
-          <GuideSection title="Testing">
-            <p>The test lockout lets you check the full-screen overlay without waiting for a detection.</p>
+          <GuideSection title="Test lockout">
+            <GuideList items={[
+              "Use Test lockout to preview the full-screen lockout experience."
+            ]} />
           </GuideSection>
         </div>
       )}
@@ -922,13 +973,9 @@ export default function App() {
       if (response?.ok) {
         applyBackendResponse(response);
         setPasswordPrompt(null);
-        if (mode === "enable") {
-          setNotice("Protection is active.");
-        } else if (response.data?.recoveryUnlockPending) {
+        if (mode === "disable" && response.data?.recoveryUnlockPending) {
           const delay = Number(response.data?.recoveryUnlockDelayMinutes || status.recoveryUnlockDelayMinutes) || 15;
           setNotice(`Recovery code accepted. Protection will turn off after the ${delay}-minute cooldown.`);
-        } else {
-          setNotice("Protection is off.");
         }
         return;
       }
@@ -992,9 +1039,9 @@ export default function App() {
       if (response?.ok) {
         applyBackendResponse(response);
         setCommitmentPrompt(null);
-        setNotice(cancelsPendingRecovery
-          ? "Commitment is active. The pending emergency unlock was canceled."
-          : "Commitment is active.");
+        if (cancelsPendingRecovery) {
+          setNotice("Pending emergency unlock canceled.");
+        }
         return;
       }
       setCommitmentPrompt((current) => ({
@@ -1148,7 +1195,6 @@ export default function App() {
     }
     if (applyBackendResponse(response)) {
       setSettingsPasswordPrompt(null);
-      setNotice("Recovery settings updated.");
     }
   };
   const saveRecoverySettingsSoon = (next, password = "") => {
@@ -1225,7 +1271,6 @@ export default function App() {
       }
       if (applyBackendResponse(response)) {
         setSettingsPasswordPrompt(null);
-        setNotice("Lockout shutdown setting updated.");
       }
     });
   };
@@ -1266,11 +1311,14 @@ export default function App() {
     }
   };
   const testLockout = () => {
-    window.brake?.testLockout?.().then((response) => {
-      if (applyBackendResponse(response)) {
-        setNotice("Test lockout started.");
-      }
-    });
+    const request = window.brake?.testLockout;
+    if (!request) {
+      setNotice("Test lockout is available in the desktop app.");
+      return;
+    }
+    request()
+      .then((response) => applyBackendResponse(response))
+      .catch(() => setNotice(humanError("test_lockout_launch_failed")));
   };
   return (
     <main className="app-shell">
@@ -1314,33 +1362,37 @@ export default function App() {
             />
             <div className="overview-single">
               <section className="overview-controls" aria-label="Overview controls">
-                <SettingRow
-                  title="Lockout length"
-                  aside={
-                    <div className="stepper-control">
-                      <button aria-label="Decrease lockout length" disabled={status.failSecure} onClick={() => changeDuration(-1)}>
-                        <Minus size={14} />
-                      </button>
-                      <label>
-                        <input
-                          aria-label="Lockout length in minutes"
-                          inputMode="numeric"
-                          min="1"
-                          max="60"
-                          type="number"
-                          disabled={status.failSecure}
-                          value={status.lockoutDurationMinutes}
-                          onChange={(event) => changeDurationInput(event.target.value)}
-                          onBlur={normalizeDurationInput}
-                        />
-                        <span>min</span>
-                      </label>
-                      <button aria-label="Increase lockout length" disabled={status.failSecure} onClick={() => changeDuration(1)}>
-                        <Plus size={14} />
-                      </button>
+                <div className="lockout-length-row">
+                  <div className="lockout-length-copy">
+                    <Clock3 size={24} strokeWidth={1.8} aria-hidden="true" />
+                    <div>
+                      <div className="setting-title">Lockout length</div>
+                      <div className="setting-description">Choose how long each lockout lasts.</div>
                     </div>
-                  }
-                />
+                  </div>
+                  <div className="stepper-control overview-stepper">
+                    <button aria-label="Decrease lockout length" disabled={status.failSecure} onClick={() => changeDuration(-1)}>
+                      <Minus size={17} />
+                    </button>
+                    <label>
+                      <input
+                        aria-label="Lockout length in minutes"
+                        inputMode="numeric"
+                        min="1"
+                        max="60"
+                        type="number"
+                        disabled={status.failSecure}
+                        value={status.lockoutDurationMinutes}
+                        onChange={(event) => changeDurationInput(event.target.value)}
+                        onBlur={normalizeDurationInput}
+                      />
+                      <span>min</span>
+                    </label>
+                    <button aria-label="Increase lockout length" disabled={status.failSecure} onClick={() => changeDuration(1)}>
+                      <Plus size={17} />
+                    </button>
+                  </div>
+                </div>
               </section>
             </div>
           </>
@@ -1350,22 +1402,25 @@ export default function App() {
               <h1>Illustrated</h1>
               {notice ? <p className="notice">{notice}</p> : null}
             </div>
-            <Card icon={ScanEye} title="Illustrated detector">
+            <Card icon={ScanEye} title="Image content detection" subtitle="Manage detection for drawings and animations.">
               {status.animeModelStatus !== "ready" ? (
                 <SettingRow
                   title="Detector package"
+                  description="Install the local model used to scan drawings and animations."
                   aside={<Badge state="">{animeStatusCopy(status.animeModelStatus)}</Badge>}
                 />
               ) : null}
               <SettingRow
-                title="Illustrated detection"
+                title="Image detection"
+                description="Scans drawings, animations, and other non-photographic content."
                 aside={
                   <button
-                    className={`pill-action ${status.animeDetectionEnabled ? "active" : ""}`}
+                    className={`toggle-action ${status.animeDetectionEnabled ? "active" : ""}`}
                     disabled={status.failSecure || status.animeModelStatus !== "ready" || (status.commitmentActive && status.animeDetectionEnabled)}
                     onClick={() => requestAnimeEnabled(!status.animeDetectionEnabled)}
                   >
-                    {status.animeDetectionEnabled ? "On" : "Off"}
+                    <span className="toggle-knob" aria-hidden="true" />
+                    <span>{status.animeDetectionEnabled ? "On" : "Off"}</span>
                   </button>
                 }
               />
@@ -1403,7 +1458,7 @@ export default function App() {
               {notice ? <p className="notice">{notice}</p> : null}
             </div>
             <div className="advanced-stack">
-              <Card icon={KeyRound} title="Recovery code">
+              <Card icon={KeyRound} title="Recovery code" subtitle="Manage how recovery works during lockouts.">
                 <SettingRow
                   title="Emergency cooldown"
                   description="How long Brake waits before the recovery code turns protection off."
@@ -1421,11 +1476,12 @@ export default function App() {
                   description="When allowed, the lockout screen shows a small emergency release option. Protection stays on."
                   aside={
                     <button
-                      className={`pill-action ${status.lockoutRecoveryEnabled ? "active" : ""}`}
+                      className={`toggle-action ${status.lockoutRecoveryEnabled ? "active" : ""}`}
                       disabled={status.failSecure}
                       onClick={() => requestRecoverySettings({ lockoutRecoveryEnabled: !status.lockoutRecoveryEnabled })}
                     >
-                      {status.lockoutRecoveryEnabled ? "On" : "Off"}
+                      <span className="toggle-knob" aria-hidden="true" />
+                      <span>{status.lockoutRecoveryEnabled ? "On" : "Off"}</span>
                     </button>
                   }
                 />
@@ -1454,25 +1510,30 @@ export default function App() {
                   }
                 />
               </Card>
-              <Card icon={Power} title="Lockout behavior">
+              <Card
+                icon={Power}
+                title="Lockout behavior"
+                subtitle="Choose what happens when a lockout ends."
+                actions={
+                  <Button variant="secondary" icon={ShieldCheck} disabled={status.failSecure} onClick={testLockout}>
+                    Test lockout (10s)
+                  </Button>
+                }
+              >
                 <SettingRow
                   title="Shutdown after lockout"
                   description="When on, Windows shuts down after a full lockout timer ends. During commitment, this cannot be turned off."
                   aside={
                     <button
-                      className={`pill-action ${status.shutdownAfterLockout ? "active" : ""}`}
+                      className={`toggle-action ${status.shutdownAfterLockout ? "active" : ""}`}
                       disabled={status.failSecure || (status.commitmentActive && status.shutdownAfterLockout)}
                       onClick={() => requestShutdownAfterLockout(!status.shutdownAfterLockout)}
                     >
-                      {status.shutdownAfterLockout ? "On" : "Off"}
+                      <span className="toggle-knob" aria-hidden="true" />
+                      <span>{status.shutdownAfterLockout ? "On" : "Off"}</span>
                     </button>
                   }
                 />
-                <div className="card-actions">
-                  <Button variant="secondary" icon={ShieldCheck} disabled={status.failSecure} onClick={testLockout}>
-                    Test lockout
-                  </Button>
-                </div>
               </Card>
             </div>
           </>
@@ -1594,6 +1655,7 @@ function humanError(error) {
     model_package_incomplete: "The illustrated detector package was incomplete. Try again later.",
     model_package_untrusted: "The illustrated detector package had unexpected files. Try again later.",
     model_download_incomplete: "The detector download did not finish cleanly. Try again.",
+    test_lockout_launch_failed: "The test lockout could not start. Restart Brake and try again.",
   };
   return messages[error] || error;
 }

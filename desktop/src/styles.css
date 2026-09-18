@@ -220,6 +220,40 @@ button {
   min-height: 0;
   overflow: auto;
   padding: 22px 24px 26px;
+  scrollbar-color: rgba(194, 198, 207, 0.38) transparent;
+  scrollbar-width: thin;
+}
+
+.content::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.content::-webkit-scrollbar-thumb {
+  min-height: 48px;
+  background: rgba(194, 198, 207, 0.34);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+  border-radius: 999px;
+}
+
+.content::-webkit-scrollbar-thumb:hover {
+  background: rgba(194, 198, 207, 0.52);
+  background-clip: padding-box;
+}
+
+.content::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.content::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 .page-head {
@@ -241,55 +275,33 @@ button {
 }
 
 .status-panel {
-  position: relative;
   display: grid;
   justify-items: center;
   gap: 16px;
-  min-height: 250px;
+  min-height: 238px;
   margin-bottom: 14px;
-  padding: 28px 24px 24px;
-  overflow: hidden;
+  padding: 24px;
   text-align: center;
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-1);
-}
-
-.status-rail {
-  position: absolute;
-  inset: 0 0 auto;
-  height: 3px;
-  background: var(--fg-4);
-}
-
-.status-panel.protected .status-rail {
-  background: var(--teal);
-}
-
-.status-panel.committed .status-rail {
-  background: var(--amber);
 }
 
 .status-orb {
+  position: relative;
   display: grid;
   place-items: center;
   width: 132px;
   height: 132px;
   color: var(--fg-3);
-  background: radial-gradient(circle at 50% 38%, rgba(243, 240, 230, 0.07), rgba(243, 240, 230, 0.015) 70%);
-  border: 1px solid var(--border-strong);
+  background: transparent;
+  border: 0;
   border-radius: 50%;
   cursor: pointer;
-  box-shadow: inset 0 0 0 10px rgba(243, 240, 230, 0.025), 0 14px 34px rgba(0, 0, 0, 0.22);
-  transition: color 140ms ease, border-color 140ms ease, background 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+  box-shadow: none;
+  transition: color 140ms ease, background 140ms ease, transform 140ms ease;
 }
 
 .status-orb:hover {
   color: var(--fg-1);
-  background: rgba(243, 240, 230, 0.04);
-  border-color: var(--fg-3);
-  box-shadow: inset 0 0 0 10px rgba(243, 240, 230, 0.04), 0 18px 42px rgba(0, 0, 0, 0.28);
+  background: var(--surface-1);
 }
 
 .status-orb:active {
@@ -298,16 +310,95 @@ button {
 
 .status-panel.protected .status-orb {
   color: var(--teal);
-  border-color: rgba(83, 235, 217, 0.8);
-  background: radial-gradient(circle at 50% 38%, rgba(83, 235, 217, 0.16), rgba(83, 235, 217, 0.025) 70%);
-  box-shadow: inset 0 0 0 10px rgba(83, 235, 217, 0.06), 0 0 0 7px var(--teal-soft), 0 18px 42px rgba(0, 0, 0, 0.26);
 }
 
 .status-panel.committed .status-orb {
   color: var(--amber);
-  border-color: rgba(255, 181, 79, 0.85);
-  background: radial-gradient(circle at 50% 38%, rgba(255, 181, 79, 0.18), rgba(255, 181, 79, 0.025) 70%);
-  box-shadow: inset 0 0 0 10px rgba(255, 181, 79, 0.06), 0 0 0 7px var(--amber-soft), 0 18px 42px rgba(0, 0, 0, 0.26);
+}
+
+.status-orb > svg:not(.status-ring) {
+  position: relative;
+  z-index: 1;
+}
+
+.status-ring {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  color: inherit;
+  pointer-events: none;
+  transform: rotate(-90deg);
+}
+
+.status-ring circle {
+  fill: none;
+  stroke-width: 2.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.status-ring-track {
+  stroke: var(--border-strong);
+}
+
+.status-ring-progress {
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-dasharray: 392.7;
+  stroke-dashoffset: 392.7;
+  opacity: 0;
+}
+
+.status-panel.protected .status-ring-progress {
+  animation: status-ring-fill-protected 680ms cubic-bezier(0.22, 0.8, 0.26, 1) forwards;
+}
+
+.status-panel.committed .status-ring-progress {
+  animation: status-ring-fill-committed 680ms cubic-bezier(0.22, 0.8, 0.26, 1) forwards;
+}
+
+.status-panel.off .status-ring-progress {
+  animation: status-ring-empty 480ms cubic-bezier(0.4, 0, 0.6, 1) forwards;
+}
+
+@keyframes status-ring-fill-protected {
+  from {
+    stroke-dashoffset: 392.7;
+    opacity: 0.35;
+  }
+  to {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+}
+
+@keyframes status-ring-fill-committed {
+  from {
+    stroke-dashoffset: 392.7;
+    opacity: 0.35;
+  }
+  to {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+}
+
+@keyframes status-ring-empty {
+  from {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  to {
+    stroke-dashoffset: 392.7;
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-ring-progress {
+    animation-duration: 1ms !important;
+  }
 }
 
 .status-copy {
@@ -362,15 +453,40 @@ button {
 
 .overview-controls {
   min-width: 0;
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-1);
-  overflow: hidden;
+  background: transparent;
+  border-top: 1px solid var(--border-strong);
+  border-bottom: 1px solid var(--border-strong);
 }
 
-.overview-controls .setting-row {
-  min-height: 58px;
+.lockout-length-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  min-height: 96px;
+  padding: 20px 28px;
+}
+
+.lockout-length-copy {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.lockout-length-copy > svg {
+  flex: 0 0 auto;
+  color: var(--fg-2);
+}
+
+.lockout-length-copy .setting-title {
+  font-size: 15px;
+  font-weight: 560;
+}
+
+.lockout-length-copy .setting-description {
+  margin-top: 5px;
+  font-size: 13px;
 }
 
 .advanced-stack {
@@ -380,30 +496,38 @@ button {
 
 .card {
   min-width: 0;
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-1);
-  overflow: hidden;
+  background: transparent;
+  border-bottom: 1px solid var(--border-strong);
 }
 
 .card-head {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 14px 18px;
-  border-bottom: 1px solid var(--border-faint);
+  gap: 14px;
+  min-height: 72px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border-strong);
 }
 
 .lead-icon {
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
-  flex: 0 0 30px;
-  color: var(--gold);
-  background: var(--gold-soft);
-  border-radius: var(--radius-sm);
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  color: var(--fg-2);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+}
+
+.card-head-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.card-head-actions {
+  flex: 0 0 auto;
 }
 
 .card-head h3 {
@@ -426,12 +550,12 @@ button {
   display: flex;
   align-items: center;
   gap: 16px;
-  min-height: 68px;
-  padding: 14px 18px;
+  min-height: 72px;
+  padding: 14px 20px;
 }
 
 .setting-row + .setting-row {
-  border-top: 1px solid var(--border-faint);
+  border-top: 1px solid var(--border-strong);
 }
 
 .setting-row > div:first-child,
@@ -537,14 +661,63 @@ button {
 .stepper-control {
   display: inline-flex;
   align-items: center;
-  height: 36px;
-  overflow: hidden;
+  height: 44px;
+  gap: 3px;
+  padding: 4px;
   color: var(--fg-1);
-  background: var(--surface-2);
+  background: transparent;
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
+  border-radius: 999px;
   font-family: "Geist Mono", "Consolas", monospace;
   font-size: 13px;
+}
+
+.toggle-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 76px;
+  height: 38px;
+  padding: 4px 10px 4px 5px;
+  color: var(--fg-2);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  cursor: pointer;
+  font-weight: 560;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+
+.toggle-knob {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  background: var(--fg-3);
+  border-radius: 50%;
+  transition: background 120ms ease;
+}
+
+.toggle-action:hover {
+  color: var(--fg-1);
+  background: var(--surface-2);
+}
+
+.toggle-action.active {
+  flex-direction: row-reverse;
+  padding: 4px 5px 4px 10px;
+  color: var(--on-accent);
+  background: var(--gold);
+  border-color: var(--gold);
+}
+
+.toggle-action.active .toggle-knob {
+  background: var(--surface-1);
+}
+
+.toggle-action:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
 }
 
 .stepper-control button {
@@ -553,18 +726,19 @@ button {
   width: 34px;
   height: 34px;
   color: var(--fg-3);
-  background: transparent;
+  background: var(--surface-3);
+  border-radius: 50%;
   cursor: pointer;
 }
 
 .stepper-control button:hover {
   color: var(--fg-1);
-  background: var(--surface-3);
+  background: #2a3140;
 }
 
 .stepper-control button:disabled {
   color: var(--fg-4);
-  background: transparent;
+  background: var(--surface-2);
   cursor: not-allowed;
 }
 
@@ -573,11 +747,9 @@ button {
   align-items: center;
   justify-content: center;
   gap: 5px;
-  min-width: 96px;
+  min-width: 90px;
   height: 34px;
-  border-left: 1px solid var(--border-faint);
-  border-right: 1px solid var(--border-faint);
-  padding: 0 10px;
+  padding: 0 8px;
 }
 
 .stepper-control input {
@@ -606,6 +778,50 @@ button {
   color: var(--fg-3);
   font-family: "Geist Mono", "Consolas", monospace;
   font-size: 13px;
+}
+
+.overview-stepper {
+  height: 52px;
+  flex: 0 0 auto;
+  gap: 4px;
+  padding: 5px;
+  background: transparent;
+  border-color: var(--border-strong);
+  border-radius: 999px;
+}
+
+.overview-stepper button {
+  width: 40px;
+  height: 40px;
+  background: var(--surface-3);
+  border-radius: 50%;
+}
+
+.overview-stepper button:hover {
+  background: #2a3140;
+}
+
+.overview-stepper button:disabled {
+  background: var(--surface-2);
+}
+
+.overview-stepper label {
+  min-width: 106px;
+  height: 40px;
+  padding: 0 12px;
+  border: 0;
+}
+
+.overview-stepper input {
+  width: 36px;
+  height: 40px;
+  line-height: 40px;
+  font-size: 16px;
+  font-weight: 620;
+}
+
+.overview-stepper label span {
+  font-size: 14px;
 }
 
 .radio-row {
@@ -664,20 +880,8 @@ button {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
-  padding: 14px 18px 16px;
-  border-top: 1px solid var(--border-faint);
-}
-
-.log-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: 54px;
-  padding: 10px 18px;
-  color: var(--fg-3);
-  border-bottom: 1px solid var(--border-faint);
-  font-size: 12px;
+  padding: 14px 20px 16px;
+  border-top: 1px solid var(--border-strong);
 }
 
 .log-actions {
@@ -829,13 +1033,15 @@ button {
 }
 
 .btn.warning {
-  color: var(--amber);
+  color: var(--fg-2);
   background: transparent;
-  border: 1px solid var(--amber-line);
+  border: 1px solid var(--border-strong);
 }
 
 .btn.warning:hover {
-  background: var(--amber-soft);
+  color: var(--fg-1);
+  background: var(--surface-2);
+  border-color: rgba(243, 240, 230, 0.24);
 }
 
 .btn.secondary {
@@ -884,6 +1090,7 @@ button {
 
 .modal-scrim {
   position: fixed;
+  z-index: 100;
   inset: 0;
   display: grid;
   place-items: center;
@@ -954,16 +1161,16 @@ button {
 
 .guide {
   display: grid;
-  gap: 16px;
+  gap: 14px;
 }
 
 .guide-section {
   display: grid;
-  gap: 7px;
+  gap: 9px;
 }
 
 .guide-section + .guide-section {
-  padding-top: 16px;
+  padding-top: 14px;
   border-top: 1px solid var(--border-faint);
 }
 
@@ -974,17 +1181,22 @@ button {
   font-weight: 620;
 }
 
-.guide-section strong {
-  color: var(--gold);
-  font-weight: 620;
-}
-
-.guide-section p {
+.guide-list {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding-left: 18px;
   color: var(--fg-2);
+  font-size: 13px;
+  line-height: 1.45;
 }
 
-.guide-section p + p {
-  margin-top: 6px;
+.guide-list li {
+  padding-left: 3px;
+}
+
+.guide-list li::marker {
+  color: var(--fg-4);
 }
 
 .password-form {
