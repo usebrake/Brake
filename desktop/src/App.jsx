@@ -230,7 +230,6 @@ function StatusPanel({ status, now, onToggleProtection, onCancelRecoveryUnlock }
 
   return (
     <section className={`status-panel ${state}`}>
-      <div className="status-rail" />
       <button
         className="status-orb"
         type="button"
