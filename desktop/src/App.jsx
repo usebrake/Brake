@@ -168,9 +168,11 @@ function confidenceCopy(confidence) {
 
 function DetectionLogs({ events, loading, onRefresh, onClear }) {
   return (
-    <Card icon={ScrollText} title="Detection events">
-      <div className="log-toolbar">
-        <span>{events.length ? `${events.length} recent ${events.length === 1 ? "event" : "events"}` : loading ? "Loading..." : "No detection events yet"}</span>
+    <Card
+      icon={ScrollText}
+      title="Detection history"
+      subtitle="Review when detector checks were triggered."
+      actions={
         <div className="log-actions">
           <button className="pill-action" onClick={onRefresh}>Refresh</button>
           <button className="pill-action danger" onClick={onClear} disabled={loading || !events.length}>
@@ -178,7 +180,8 @@ function DetectionLogs({ events, loading, onRefresh, onClear }) {
             <span>Clear</span>
           </button>
         </div>
-      </div>
+      }
+    >
       {events.length ? (
         <div className="log-list">
           {events.map((event, index) => (
@@ -254,7 +257,7 @@ function StatusPanel({ status, now, onToggleProtection, onCancelRecoveryUnlock }
   );
 }
 
-function Card({ icon: Icon, title, subtitle, children }) {
+function Card({ icon: Icon, title, subtitle, actions, children }) {
   return (
     <section className="card">
       <header className="card-head">
@@ -263,10 +266,11 @@ function Card({ icon: Icon, title, subtitle, children }) {
             <Icon size={17} />
           </span>
         ) : null}
-        <div>
+        <div className="card-head-copy">
           <h3>{title}</h3>
           {subtitle ? <p>{subtitle}</p> : null}
         </div>
+        {actions ? <div className="card-head-actions">{actions}</div> : null}
       </header>
       <div className="card-body">{children}</div>
     </section>
@@ -1311,7 +1315,7 @@ export default function App() {
                     <Clock3 size={24} strokeWidth={1.8} aria-hidden="true" />
                     <div>
                       <div className="setting-title">Lockout length</div>
-                      <div className="setting-description">Choose how long Brake locks the screen after explicit content is detected.</div>
+                      <div className="setting-description">Choose how long each lockout lasts.</div>
                     </div>
                   </div>
                   <div className="stepper-control overview-stepper">
@@ -1346,22 +1350,25 @@ export default function App() {
               <h1>Illustrated</h1>
               {notice ? <p className="notice">{notice}</p> : null}
             </div>
-            <Card icon={ScanEye} title="Illustrated detector">
+            <Card icon={ScanEye} title="Image content detection" subtitle="Manage detection for illustrated and animated images.">
               {status.animeModelStatus !== "ready" ? (
                 <SettingRow
                   title="Detector package"
+                  description="Install the local model used to scan illustrated and animated images."
                   aside={<Badge state="">{animeStatusCopy(status.animeModelStatus)}</Badge>}
                 />
               ) : null}
               <SettingRow
-                title="Illustrated detection"
+                title="Detect illustrated images"
+                description="Scans illustrations, animations, and other non-photographic content."
                 aside={
                   <button
-                    className={`pill-action ${status.animeDetectionEnabled ? "active" : ""}`}
+                    className={`toggle-action ${status.animeDetectionEnabled ? "active" : ""}`}
                     disabled={status.failSecure || status.animeModelStatus !== "ready" || (status.commitmentActive && status.animeDetectionEnabled)}
                     onClick={() => requestAnimeEnabled(!status.animeDetectionEnabled)}
                   >
-                    {status.animeDetectionEnabled ? "On" : "Off"}
+                    <span className="toggle-knob" aria-hidden="true" />
+                    <span>{status.animeDetectionEnabled ? "On" : "Off"}</span>
                   </button>
                 }
               />
@@ -1399,7 +1406,7 @@ export default function App() {
               {notice ? <p className="notice">{notice}</p> : null}
             </div>
             <div className="advanced-stack">
-              <Card icon={KeyRound} title="Recovery code">
+              <Card icon={KeyRound} title="Recovery code" subtitle="Manage how recovery works during lockouts.">
                 <SettingRow
                   title="Emergency cooldown"
                   description="How long Brake waits before the recovery code turns protection off."
@@ -1417,11 +1424,12 @@ export default function App() {
                   description="When allowed, the lockout screen shows a small emergency release option. Protection stays on."
                   aside={
                     <button
-                      className={`pill-action ${status.lockoutRecoveryEnabled ? "active" : ""}`}
+                      className={`toggle-action ${status.lockoutRecoveryEnabled ? "active" : ""}`}
                       disabled={status.failSecure}
                       onClick={() => requestRecoverySettings({ lockoutRecoveryEnabled: !status.lockoutRecoveryEnabled })}
                     >
-                      {status.lockoutRecoveryEnabled ? "On" : "Off"}
+                      <span className="toggle-knob" aria-hidden="true" />
+                      <span>{status.lockoutRecoveryEnabled ? "On" : "Off"}</span>
                     </button>
                   }
                 />
@@ -1450,17 +1458,18 @@ export default function App() {
                   }
                 />
               </Card>
-              <Card icon={Power} title="Lockout behavior">
+              <Card icon={Power} title="Lockout behavior" subtitle="Choose what happens when a lockout ends.">
                 <SettingRow
                   title="Shutdown after lockout"
                   description="When on, Windows shuts down after a full lockout timer ends. During commitment, this cannot be turned off."
                   aside={
                     <button
-                      className={`pill-action ${status.shutdownAfterLockout ? "active" : ""}`}
+                      className={`toggle-action ${status.shutdownAfterLockout ? "active" : ""}`}
                       disabled={status.failSecure || (status.commitmentActive && status.shutdownAfterLockout)}
                       onClick={() => requestShutdownAfterLockout(!status.shutdownAfterLockout)}
                     >
-                      {status.shutdownAfterLockout ? "On" : "Off"}
+                      <span className="toggle-knob" aria-hidden="true" />
+                      <span>{status.shutdownAfterLockout ? "On" : "Off"}</span>
                     </button>
                   }
                 />
